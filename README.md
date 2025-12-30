@@ -24,11 +24,13 @@ Looking for more diverse and higher-quality dexterous grasps? Check out [Dexonom
 1. **Install git lfs**: Before `git clone` this repository, please make sure that the git lfs has been installed by `sudo apt install git-lfs`.
 
 2. **Install the Python environment**:
-```
+```bash
 conda create -n bodex python=3.10
 conda activate bodex
 
 conda install pytorch==2.2.2 pytorch-cuda=12.1 -c pytorch -c nvidia 
+
+pip install mkl==2024.0.0
 
 pip install -e . --no-build-isolation  
 
@@ -41,6 +43,14 @@ pip install numpy==1.26.4
 
 cd src/curobo/geom/cpp
 python setup.py install    # install coal_openmp_wrapper
+
+# by mingrui
+pip install 'pyglet<2'
+pip install hydra-core
+pip install pyrender
+
+cd third_party/pytorch_kinematics
+pip install -e .
 ```
 
 3. **Prepare object assets**: Download our pre-processed object assets `DGN_2k_processed.zip` from [Hugging Face](https://huggingface.co/datasets/JiayiChenPKU/BODex) and organize the unzipped folders as below. 
@@ -62,6 +72,11 @@ Alternatively, new object assets can be pre-processed using [MeshProcess](https:
 ```
 # Single GPU version
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 40 
+
+# mingrui test
+python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
+
+python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
 
 # Debugging. The saved USD file has the whole optimization process, while the intermediate gradient on each contact point is denoted by the purple line.
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 1 -m usd -debug -d all -i 0 1

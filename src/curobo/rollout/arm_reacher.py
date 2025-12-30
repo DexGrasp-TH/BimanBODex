@@ -91,9 +91,7 @@ class ArmReacherMetrics(RolloutMetrics):
             contact_force=None if self.contact_force is None else self.contact_force.clone(),
             pose_error=None if self.pose_error is None else self.pose_error.clone(),
             goalset_index=None if self.goalset_index is None else self.goalset_index.clone(),
-            null_space_error=(
-                None if self.null_space_error is None else self.null_space_error.clone()
-            ),
+            null_space_error=(None if self.null_space_error is None else self.null_space_error.clone()),
         )
 
 
@@ -189,9 +187,9 @@ class ArmReacher(ArmBase, ArmReacherConfig):
         self._compute_g_dist = False
         self._n_goalset = 1
 
-        if self.cost_cfg.grasp_cfg is not None:            
+        if self.cost_cfg.grasp_cfg is not None:
             self.grasp_cost = GraspCost(self.cost_cfg.grasp_cfg)
-            
+
         if self.cost_cfg.cspace_cfg is not None:
             self.cost_cfg.cspace_cfg.dof = self.d_action
             # self.cost_cfg.cspace_cfg.update_vec_weight(self.dynamics_model.cspace_distance_weight)
@@ -200,9 +198,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
             self.cost_cfg.pose_cfg.waypoint_horizon = self.horizon
             self.goal_cost = PoseCost(self.cost_cfg.pose_cfg)
             if self.cost_cfg.link_pose_cfg is None:
-                log_info(
-                    "Deprecated: Add link_pose_cfg to your rollout config. Using pose_cfg instead."
-                )
+                log_info("Deprecated: Add link_pose_cfg to your rollout config. Using pose_cfg instead.")
                 self.cost_cfg.link_pose_cfg = self.cost_cfg.pose_cfg
         self._link_pose_costs = {}
 
@@ -229,24 +225,20 @@ class ArmReacher(ArmBase, ArmReacherConfig):
             if self.zero_jerk_cost.hinge_value is not None:
                 self._compute_g_dist = True
 
-        self.z_tensor = torch.tensor(
-            0, device=self.tensor_args.device, dtype=self.tensor_args.dtype
-        )
+        self.z_tensor = torch.tensor(0, device=self.tensor_args.device, dtype=self.tensor_args.dtype)
         self._link_pose_convergence = {}
 
-        if self.convergence_cfg.grasp_cfg is not None:     
+        if self.convergence_cfg.grasp_cfg is not None:
             if self.cost_cfg.grasp_cfg is not None:
                 grasp_energy = self.grasp_cost.GraspEnergy
             else:
                 grasp_energy = None
             self.grasp_convergence = GraspCost(self.convergence_cfg.grasp_cfg, grasp_energy)
-            
+
         if self.convergence_cfg.pose_cfg is not None:
             self.pose_convergence = PoseCost(self.convergence_cfg.pose_cfg)
             if self.convergence_cfg.link_pose_cfg is None:
-                log_warn(
-                    "Deprecated: Add link_pose_cfg to your rollout config. Using pose_cfg instead."
-                )
+                log_warn("Deprecated: Add link_pose_cfg to your rollout config. Using pose_cfg instead.")
                 self.convergence_cfg.link_pose_cfg = self.convergence_cfg.pose_cfg
 
         if self.convergence_cfg.link_pose_cfg is not None:
@@ -269,7 +261,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
         :class:`curobo.rollout.cost.DistCost`
 
         """
-        debug = None 
+        debug = None
         if debug_flag:
             state.robot_spheres.retain_grad()
             state.link_pos_seq.retain_grad()
@@ -277,15 +269,18 @@ class ArmReacher(ArmBase, ArmReacherConfig):
         state_batch = state.state_seq
         with profiler.record_function("cost/base"):
             cost_list = super(ArmReacher, self).cost_fn(state, action_batch, opt_progress, return_list=True)
-        
+
         with profiler.record_function("cost/grasp"):
             if self.cost_cfg.grasp_cfg is not None and self.grasp_cost.enabled:
                 link_pos_quat = torch.cat([state.link_pos_seq, state.link_quat_seq], dim=-1)
-                gws_cost, dist_cost, regu_cost, debug = self.grasp_cost.forward(state.robot_spheres, link_pos_quat,
-                                                                                env_query_idx=self._goal_buffer.batch_world_idx, 
-                                                                                opt_progress=opt_progress)
-                cost_list.extend([gws_cost, dist_cost, regu_cost])
-        
+                gws_cost, normal_cost, dist_cost, regu_cost, debug = self.grasp_cost.forward(
+                    state.robot_spheres,
+                    link_pos_quat,
+                    env_query_idx=self._goal_buffer.batch_world_idx,
+                    opt_progress=opt_progress,
+                )
+                cost_list.extend([gws_cost, normal_cost, dist_cost, regu_cost])
+
         ee_pos_batch, ee_quat_batch = state.ee_pos_seq, state.ee_quat_seq
         g_dist = None
         with profiler.record_function("cost/pose"):
@@ -303,9 +298,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
 
                     g_dist = _compute_g_dist_jit(rot_err_norm, goal_dist)
                 else:
-                    goal_cost = self.goal_cost.forward(
-                        ee_pos_batch, ee_quat_batch, self._goal_buffer
-                    )
+                    goal_cost = self.goal_cost.forward(ee_pos_batch, ee_quat_batch, self._goal_buffer)
                 cost_list.append(goal_cost)
         with profiler.record_function("cost/link_poses"):
             if self._goal_buffer.links_goal_pose is not None and self.cost_cfg.pose_cfg is not None:
@@ -323,12 +316,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
                             c = current_fn.forward(current_pos, current_quat, self._goal_buffer, k)
                             cost_list.append(c)
 
-        if (
-            self._goal_buffer.goal_state is not None
-            and self.cost_cfg.cspace_cfg is not None
-            and self.dist_cost.enabled
-        ):
-
+        if self._goal_buffer.goal_state is not None and self.cost_cfg.cspace_cfg is not None and self.dist_cost.enabled:
             joint_cost = self.dist_cost.forward_target_idx(
                 self._goal_buffer.goal_state.position,
                 state_batch.position,
@@ -340,8 +328,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
             cost_list.append(st_cost)
 
         if (
-            self.cost_cfg.zero_acc_cfg is not None
-            and self.zero_acc_cost.enabled
+            self.cost_cfg.zero_acc_cfg is not None and self.zero_acc_cost.enabled
             # and g_dist is not None
         ):
             z_acc = self.zero_acc_cost.forward(
@@ -370,7 +357,6 @@ class ArmReacher(ArmBase, ArmReacherConfig):
                 cost = cat_sum_reacher(cost_list)
         return cost, debug
 
-
     def convergence_fn(
         self, state: KinematicModelState, out_metrics: Optional[ArmReacherMetrics] = None
     ) -> ArmReacherMetrics:
@@ -382,33 +368,26 @@ class ArmReacher(ArmBase, ArmReacherConfig):
 
         if self.convergence_cfg.grasp_cfg is not None:
             link_pos_quat = torch.cat([state.link_pos_seq, state.link_quat_seq], dim=-1)
-            (out_metrics.dist_error, 
-                out_metrics.grasp_error, 
+            (
+                out_metrics.dist_error,
+                out_metrics.grasp_error,
                 out_metrics.contact_point,
-                out_metrics.contact_frame, 
-                out_metrics.contact_force) = self.grasp_convergence.evaluate(
-                    link_pos_quat,
-                    env_query_idx=self._goal_buffer.batch_world_idx,
-                )
-            
+                out_metrics.contact_frame,
+                out_metrics.contact_force,
+            ) = self.grasp_convergence.evaluate(
+                link_pos_quat,
+                env_query_idx=self._goal_buffer.batch_world_idx,
+            )
 
         # compute error with pose?
-        if (
-            self._goal_buffer.goal_pose.position is not None
-            and self.convergence_cfg.pose_cfg is not None
-        ):
+        if self._goal_buffer.goal_pose.position is not None and self.convergence_cfg.pose_cfg is not None:
             (
                 out_metrics.pose_error,
                 out_metrics.rotation_error,
                 out_metrics.position_error,
-            ) = self.pose_convergence.forward_out_distance(
-                state.ee_pos_seq, state.ee_quat_seq, self._goal_buffer
-            )
+            ) = self.pose_convergence.forward_out_distance(state.ee_pos_seq, state.ee_quat_seq, self._goal_buffer)
             out_metrics.goalset_index = self.pose_convergence.goalset_index_buffer  # .clone()
-        if (
-            self._goal_buffer.links_goal_pose is not None
-            and self.convergence_cfg.pose_cfg is not None
-        ):
+        if self._goal_buffer.links_goal_pose is not None and self.convergence_cfg.pose_cfg is not None:
             pose_error = [out_metrics.pose_error]
             position_error = [out_metrics.position_error]
             quat_error = [out_metrics.rotation_error]
@@ -506,9 +485,7 @@ class ArmReacher(ArmBase, ArmReacherConfig):
         self,
         metric: PoseCostMetric,
     ):
-        pose_costs = self.get_pose_costs(
-            include_link_pose=metric.include_link_pose, include_convergence=False
-        )
+        pose_costs = self.get_pose_costs(include_link_pose=metric.include_link_pose, include_convergence=False)
         for p in pose_costs:
             p.update_metric(metric, update_offset_waypoint=True)
 

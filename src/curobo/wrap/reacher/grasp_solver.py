@@ -11,7 +11,7 @@
 # Standard Library
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
-import math 
+import math
 from copy import deepcopy
 
 # Third Party
@@ -46,22 +46,23 @@ from curobo.wrap.reacher.types import ReacherSolveState, ReacherSolveType
 from curobo.wrap.wrap_base import WrapBase, WrapConfig, WrapResult
 from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
 
+
 def compare_element(x, y):
     if isinstance(x, dict):
         if not isinstance(y, dict):
             return False, x, y
         for k in x.keys():
             if k not in y:
-                return False, x, y 
+                return False, x, y
             retf, ret1, ret2 = compare_element(x[k], y[k])
             if not retf:
-                return False, x[k], y[k]  
-        return True, None, None 
+                return False, x[k], y[k]
+        return True, None, None
     elif x != y:
-        return False, x, y 
+        return False, x, y
     else:
-        return True, None, None 
-    
+        return True, None, None
+
 
 @dataclass
 class GraspSolverConfig:
@@ -72,29 +73,29 @@ class GraspSolverConfig:
     grasp_threshold: float
     distance_threshold: float
     rollout_fn: ArmReacher
-    q_sample_gen: HeurGraspSeedGenerator 
+    q_sample_gen: HeurGraspSeedGenerator
     grasp_nn_seeder: Optional[str] = None
     world_coll_checker: Optional[WorldCollision] = None
     sample_rejection_ratio: int = 50
     tensor_args: TensorDeviceType = TensorDeviceType()
     ik_solver: IKSolver = None
-        
+    pregrasp_stage: int = 0
+    grasp_stage: int = 0
+
     @staticmethod
     @profiler.record_function("grasp_solver/load_from_robot_config")
     def load_from_robot_config(
         robot_cfg: RobotConfig = None,
-        world_model: Optional[
-            Union[Union[List[Dict], List[WorldConfig]], Union[Dict, WorldConfig]]
-        ] = None,
+        world_model: Optional[Union[Union[List[Dict], List[WorldConfig]], Union[Dict, WorldConfig]]] = None,
         manip_name_list: List = None,
         obj_gravity_center: List = None,
         obj_obb_length: List = None,
-        metric_type: str = None, 
+        metric_type: str = None,
         no_grasp_cfg: bool = False,
         tensor_args: TensorDeviceType = TensorDeviceType(),
         grasp_threshold: float = 0.001,
         distance_threshold: float = 0.01,
-        world_coll_checker = None,
+        world_coll_checker=None,
         manip_config_data: dict = None,
         calculate_penetration: str = None,
         use_cuda_graph: Optional[bool] = None,
@@ -110,26 +111,43 @@ class GraspSolverConfig:
         regularization: bool = True,
         collision_activation_distance: Optional[float] = None,
         ik_solver: IKSolver = None,
+        pregrasp_stage: int = 0,
+        grasp_stage: int = 0,
     ):
         # use default values, disable environment collision checking
-        base_config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data['base_cfg_file']))
-        config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data['particle_file']))
-        grad_config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data['gradient_file']))
-        robot_config_data = load_yaml(join_path(get_robot_configs_path(), manip_config_data['robot_file']))["robot_cfg"]
-        
+        base_config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data["base_cfg_file"]))
+        config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data["particle_file"]))
+        grad_config_data = load_yaml(join_path(get_task_configs_path(), manip_config_data["gradient_file"]))
+        robot_config_data = load_yaml(join_path(get_robot_configs_path(), manip_config_data["robot_file"]))["robot_cfg"]
+
+        # copy parameters from manip_config_data to grad_config_data
+        for key in manip_config_data["gradient"]["lbfgs"].keys():
+            grad_config_data["lbfgs"][key] = manip_config_data["gradient"]["lbfgs"][key]
+        for key in manip_config_data["gradient"]["cost"]["grasp_cfg"].keys():
+            grad_config_data["cost"]["grasp_cfg"][key] = manip_config_data["gradient"]["cost"]["grasp_cfg"][key]
+
         if robot_cfg is None:
-            contact_robot_links = [i.split('/')[0] for i in manip_config_data['grasp_contact_strategy']['contact_points_name']]
+            contact_robot_links = [
+                i.split("/")[0] for i in manip_config_data["grasp_contact_strategy"]["contact_points_name"]
+            ]
+            # TODO: add contact normals here?
             if calculate_penetration is None:
-                robot_config_data['kinematics']['contact_mesh_names'] = contact_robot_links
-            elif calculate_penetration == 'all_links':
-                robot_config_data['kinematics']['contact_mesh_names'] = [link for link in robot_config_data['kinematics']['mesh_link_names']]
-            elif calculate_penetration == 'non_contact_links':
-                robot_config_data['kinematics']['contact_mesh_names'] = [link for link in robot_config_data['kinematics']['mesh_link_names'] if link not in contact_robot_links]
+                robot_config_data["kinematics"]["contact_mesh_names"] = contact_robot_links
+            elif calculate_penetration == "all_links":
+                robot_config_data["kinematics"]["contact_mesh_names"] = [
+                    link for link in robot_config_data["kinematics"]["mesh_link_names"]
+                ]
+            elif calculate_penetration == "non_contact_links":
+                robot_config_data["kinematics"]["contact_mesh_names"] = [
+                    link
+                    for link in robot_config_data["kinematics"]["mesh_link_names"]
+                    if link not in contact_robot_links
+                ]
             else:
                 raise NotImplementedError
-                    
+
             robot_cfg = RobotConfig.from_dict(robot_config_data)
-        
+
         if collision_checker_type is not None:
             base_config_data["world_collision_checker_cfg"]["checker_type"] = collision_checker_type
         if not regularization:
@@ -140,34 +158,34 @@ class GraspSolverConfig:
 
         if world_coll_checker is None and world_model is not None:
             base_config_data["world_collision_checker_cfg"]["contact_obj_names"] = manip_name_list
-            base_config_data["world_collision_checker_cfg"]["contact_obj_sample_params"] = manip_config_data['seeder_cfg']['obj_sample']
+            base_config_data["world_collision_checker_cfg"]["contact_obj_sample_params"] = manip_config_data[
+                "seeder_cfg"
+            ]["obj_sample"]
             base_config_data["world_collision_checker_cfg"]["contact_obj_mesh_loading"] = True
             world_cfg = WorldCollisionConfig.load_from_dict(
                 base_config_data["world_collision_checker_cfg"], world_model, tensor_args
             )
             world_coll_checker = create_collision_checker(world_cfg)
-        
+
         if collision_activation_distance is not None:
-            config_data["cost"]["primitive_collision_cfg"][
-                "activation_distance"
-            ] = collision_activation_distance
-            grad_config_data["cost"]["primitive_collision_cfg"][
-                "activation_distance"
-            ] = collision_activation_distance
-        
+            config_data["cost"]["primitive_collision_cfg"]["activation_distance"] = collision_activation_distance
+            grad_config_data["cost"]["primitive_collision_cfg"]["activation_distance"] = collision_activation_distance
+
         if "grasp_contact_strategy" in manip_config_data:
             config_data["cost"]["contact_strategy"] = manip_config_data["grasp_contact_strategy"]
             grad_config_data["cost"]["contact_strategy"] = manip_config_data["grasp_contact_strategy"]
             base_config_data["constraint"]["contact_strategy"] = manip_config_data["grasp_contact_strategy"]
             base_config_data["convergence"]["contact_strategy"] = deepcopy(manip_config_data["grasp_contact_strategy"])
             base_config_data["convergence"]["contact_strategy"]["distance"][0] = 0
-            base_config_data["convergence"]["contact_strategy"]["contact_query_mode"][0] = manip_config_data["grasp_contact_strategy"]["contact_query_mode"][-1]
+            base_config_data["convergence"]["contact_strategy"]["contact_query_mode"][0] = manip_config_data[
+                "grasp_contact_strategy"
+            ]["contact_query_mode"][-1]
 
         manip_config_data["grasp_cfg"]["ge_param"]["obj_gravity_center"] = obj_gravity_center
         manip_config_data["grasp_cfg"]["ge_param"]["obj_obb_length"] = obj_obb_length
         if metric_type is not None:
             manip_config_data["grasp_cfg"]["ge_param"]["type"] = metric_type
-        
+
         if store_debug:
             use_cuda_graph = False
             grad_config_data["lbfgs"]["store_debug"] = store_debug
@@ -180,14 +198,20 @@ class GraspSolverConfig:
 
         if grad_iters is not None:
             grad_config_data["lbfgs"]["n_iters"] = grad_iters
-        if 'grasp_cfg' in grad_config_data['cost'].keys() and not no_grasp_cfg:
-            grad_config_data['cost']['grasp_cfg'] = {**grad_config_data['cost']['grasp_cfg'], **manip_config_data['grasp_cfg']}
-            config_data['cost']['grasp_cfg'] = {**config_data['cost']['grasp_cfg'], **manip_config_data['grasp_cfg']}
-            base_config_data["convergence"]['grasp_cfg'] = {**base_config_data['convergence']['grasp_cfg'], **manip_config_data['grasp_cfg']}
+        if "grasp_cfg" in grad_config_data["cost"].keys() and not no_grasp_cfg:
+            grad_config_data["cost"]["grasp_cfg"] = {
+                **grad_config_data["cost"]["grasp_cfg"],
+                **manip_config_data["grasp_cfg"],
+            }
+            config_data["cost"]["grasp_cfg"] = {**config_data["cost"]["grasp_cfg"], **manip_config_data["grasp_cfg"]}
+            base_config_data["convergence"]["grasp_cfg"] = {
+                **base_config_data["convergence"]["grasp_cfg"],
+                **manip_config_data["grasp_cfg"],
+            }
         elif no_grasp_cfg:
-            grad_config_data['cost'].pop('grasp_cfg')
-            config_data['cost'].pop('grasp_cfg')
-            base_config_data['convergence'].pop('grasp_cfg')
+            grad_config_data["cost"].pop("grasp_cfg")
+            config_data["cost"].pop("grasp_cfg")
+            base_config_data["convergence"].pop("grasp_cfg")
 
         config_data["mppi"]["n_problems"] = 1
         grad_config_data["lbfgs"]["n_problems"] = 1
@@ -218,9 +242,7 @@ class GraspSolverConfig:
         # arm_rollout_safety = ArmReacher(grad_cfg)
         aux_rollout = ArmReacher(grad_cfg)
 
-        config_dict = LBFGSOptConfig.create_data_dict(
-            grad_config_data["lbfgs"], aux_rollout, tensor_args
-        )
+        config_dict = LBFGSOptConfig.create_data_dict(grad_config_data["lbfgs"], aux_rollout, tensor_args)
         lbfgs_cfg = LBFGSOptConfig(**config_dict)
 
         if use_gradient_descent:
@@ -238,9 +260,7 @@ class GraspSolverConfig:
 
         if use_particle_opt:
             arm_rollout_mppi = ArmReacher(cfg)
-            config_dict = ParallelMPPIConfig.create_data_dict(
-                config_data["mppi"], arm_rollout_mppi, tensor_args
-            )
+            config_dict = ParallelMPPIConfig.create_data_dict(config_data["mppi"], arm_rollout_mppi, tensor_args)
             if use_es is not None and use_es:
                 mppi_cfg = ParallelESConfig(**config_dict)
                 if es_learning_rate is not None:
@@ -261,50 +281,59 @@ class GraspSolverConfig:
             sync_cuda_time=sync_cuda_time,
         )
         grasp = WrapBase(cfg)
-        
-        if ik_solver is None and manip_config_data['robot_file_with_arm'] is not None:
-            robot_config_data = load_yaml(join_path(get_robot_configs_path(), manip_config_data['robot_file_with_arm']))["robot_cfg"]
+
+        if ik_solver is None and manip_config_data["robot_file_with_arm"] is not None:
+            robot_config_data = load_yaml(
+                join_path(get_robot_configs_path(), manip_config_data["robot_file_with_arm"])
+            )["robot_cfg"]
             ik_link_names = aux_rollout.kinematics.transfered_link_name
-            robot_config_data['kinematics']['link_names'] = ik_link_names
-            robot_config_data['kinematics']['ee_link'] = ik_link_names[0]
+            robot_config_data["kinematics"]["link_names"] = ik_link_names
+            robot_config_data["kinematics"]["ee_link"] = ik_link_names[0]
             ik_robot_cfg = RobotConfig.from_dict(robot_config_data, tensor_args)
             ik_config = IKSolverConfig.load_from_robot_config(
-                ik_robot_cfg,
-                None,
-                world_coll_checker=world_coll_checker,
+                robot_cfg=ik_robot_cfg,
+                world_model=None,
+                num_seeds=20,  # BODEX: 1
                 tensor_args=tensor_args,
-                position_threshold=0.001,
-                gradient_file='gradient_ik.yml',
-                use_particle_opt=False,
-                num_seeds=1,
+                world_coll_checker=None,  # BODEX: world_coll_checker=world_coll_checker,
+                position_threshold=0.002,  # BODEX: 0.001
+                gradient_file="gradient_ik.yml",
+                use_particle_opt=True,  # BODEX: False
+                self_collision_check=False,  # BODEX: True
+                self_collision_opt=False,  # BODEX: True
+                regularization=True,
             )
             ik_solver = IKSolver(ik_config)
-        
-        robot_has_arm_flag = (manip_config_data['robot_file_with_arm'] is not None) and (manip_config_data['robot_file_with_arm'] == manip_config_data['robot_file'])
+
+        robot_has_arm_flag = (manip_config_data["robot_file_with_arm"] is not None) and (
+            manip_config_data["robot_file_with_arm"] == manip_config_data["robot_file"]
+        )
         q_sample_gen = HeurGraspSeedGenerator(
-            seeder_cfg=manip_config_data['seeder_cfg'],
+            seeder_cfg=manip_config_data["seeder_cfg"],
             full_robot_model=aux_rollout.kinematics,
             ik_solver=ik_solver if robot_has_arm_flag else None,
             world_coll_checker=world_coll_checker,
             obj_lst=manip_name_list,
-            tensor_args=tensor_args
+            tensor_args=tensor_args,
         )
-        
+
         grasp_cfg = GraspSolverConfig(
             robot_config=robot_cfg,
-            robot_file=manip_config_data['robot_file'],
+            robot_file=manip_config_data["robot_file"],
             solver=grasp,
-            num_seeds=manip_config_data['seed_num'],
+            num_seeds=manip_config_data["seed_num"],
             grasp_threshold=grasp_threshold,
             distance_threshold=distance_threshold,
             world_coll_checker=world_coll_checker,
-            q_sample_gen=q_sample_gen, 
+            q_sample_gen=q_sample_gen,
             rollout_fn=aux_rollout,
             tensor_args=tensor_args,
             ik_solver=ik_solver,
+            pregrasp_stage=pregrasp_stage,
+            grasp_stage=grasp_stage,
         )
         return grasp_cfg
-    
+
 
 @dataclass
 class GraspResult(Sequence):
@@ -386,9 +415,7 @@ class GraspSolver(GraspSolverConfig):
         # self._solve_
         self.batch_size = -1
         self._num_seeds = self.num_seeds
-        self.init_state = JointState.from_position(
-            self.solver.rollout_fn.retract_state.unsqueeze(0)
-        )
+        self.init_state = JointState.from_position(self.solver.rollout_fn.retract_state.unsqueeze(0))
         self.dof = self.solver.safety_rollout.d_action
         self._col = torch.arange(0, 1, device=self.tensor_args.device, dtype=torch.long)
 
@@ -406,7 +433,6 @@ class GraspSolver(GraspSolverConfig):
         retract_config: Optional[T_BDOF] = None,
         link_poses: Optional[Dict[str, Pose]] = None,
     ) -> Goal:
-        
         q_sample = self.sample_configs(self.world_coll_checker.n_envs)
         kin_state = self.fk(q_sample)
         goal_pose = Pose(kin_state.ee_position, kin_state.ee_quaternion)
@@ -602,33 +628,57 @@ class GraspSolver(GraspSolverConfig):
         # create goal buffer:
         goal_buffer = self.update_goal_buffer(solve_state, retract_config, link_poses)
 
-        coord_position_seed = self.get_seed(
-            num_seeds, goal_buffer.goal_pose, use_nn_seed, seed_config
-        )
+        coord_position_seed = self.get_seed(num_seeds, goal_buffer.goal_pose, use_nn_seed, seed_config)
 
         if newton_iters is not None:
             self.solver.newton_optimizer.outer_iters = newton_iters
         self.solver.reset()
-        self.solver._init_solver = True     # avoid run multiple times
+        self.solver._init_solver = True  # avoid run multiple times
         result = self.solver.solve(goal_buffer, coord_position_seed)
         if newton_iters is not None:
             self.solver.newton_optimizer.outer_iters = self.og_newton_iters
-        grasp_result = self.get_result(num_seeds, result, goal_buffer.goal_pose, return_seeds)
+        grasp_result = self.get_result(num_seeds, result, goal_buffer.goal_pose, return_seeds, goal_buffer)
 
         return grasp_result
 
+    def eval(self, goal, act_seq):
+        """
+        Re-evaluate the metrics given the action (qpos).
+        Args:
+            act_seqZ: shape (B, 1, dof)
+        """
+        filtered_state = self.solver.safety_rollout.filter_robot_state(goal.current_state)
+        goal.current_state.copy_(filtered_state)
+        self.solver.update_params(goal)
+        act = self.solver.safety_rollout.get_robot_command(
+            filtered_state, act_seq, state_idx=goal.batch_current_state_idx
+        )
+        if self.solver.compute_metrics:
+            with profiler.record_function("wrap_base/compute_metrics"):
+                metrics = self.solver.get_metrics(act, self.solver.use_cuda_graph_metrics)
+
+        return metrics
+
     @profiler.record_function("grasp/get_result")
     def get_result(
-        self, num_seeds: int, result: WrapResult, goal_pose: Pose, return_seeds: int
+        self, num_seeds: int, result: WrapResult, goal_pose: Pose, return_seeds: int, goal: Goal
     ) -> GraspResult:
-        success = self.get_success(result.metrics, num_seeds=num_seeds)
-        all_sol = result.debug['mid_result'][0]
-        all_sol.append(result.action.position.unsqueeze(1))
-        all_sol = torch.cat(all_sol, dim=1)
+        all_mid_sol = result.debug["mid_result"][0]
+        all_mid_dist = result.debug["dist_error"][0]
 
-        all_dist = result.debug['dist_error'][0]
-        all_dist.append(result.metrics.dist_error)
-        all_dist = torch.stack(all_dist, dim=1)
+        # extract the solution at the pregrasp and grasp step from the mid results
+        contact_stages = torch.stack(result.debug["contact_stage"][0], dim=-1)[0]
+        pregrasp_step = torch.where(contact_stages == self.pregrasp_stage)[0][-1]
+        grasp_step = torch.where(contact_stages == self.grasp_stage)[0][-1]
+        all_sol = torch.cat([all_mid_sol[pregrasp_step], all_mid_sol[grasp_step]], dim=1)
+        all_dist = torch.stack([all_mid_dist[pregrasp_step], all_mid_dist[grasp_step]], dim=1)
+
+        # recompute the metrics at the grasp step
+        metrics = self.eval(goal, all_mid_sol[grasp_step])
+        result.metrics = metrics  # replace the result.metric
+
+        # post-process the metrics
+        success = self.get_success(result.metrics, num_seeds=num_seeds)
         q_sol, success, grasp_error, dist_error, contact_point, contact_frame, contact_force = get_result(
             result.metrics.grasp_error,
             all_dist,
@@ -643,7 +693,6 @@ class GraspSolver(GraspSolverConfig):
             num_seeds,
         )
         # check if locked joints exist and create js solution:
-
         new_js = JointState(q_sol, joint_names=self.rollout_fn.kinematics.joint_names)
         sol_js = self.rollout_fn.get_full_dof_from_solution(new_js)
         # reindex success to get successful poses?
@@ -692,10 +741,9 @@ class GraspSolver(GraspSolverConfig):
     @torch.no_grad()
     @profiler.record_function("grasp/get_success")
     def get_success(self, metrics: RolloutMetrics, num_seeds: int) -> torch.Tensor:
-        
-        log_warn(f'final succ (thre=0.2) {(metrics.grasp_error.max(dim=-1)[0] < 0.2).sum()}')
-        log_warn(f'final succ (thre=0.1) {(metrics.grasp_error.max(dim=-1)[0] < 0.1).sum()}')
-        log_warn(f'final dist error mean {metrics.dist_error.mean()} max {metrics.dist_error.max()}')
+        log_warn(f"final succ (thre=0.2) {(metrics.grasp_error.max(dim=-1)[0] < 0.2).sum()}")
+        log_warn(f"final succ (thre=0.1) {(metrics.grasp_error.max(dim=-1)[0] < 0.1).sum()}")
+        log_warn(f"final dist error mean {metrics.dist_error.mean()} max {metrics.dist_error.max()}")
         success = get_success(
             metrics.feasible,
             metrics.grasp_error,
@@ -708,11 +756,13 @@ class GraspSolver(GraspSolverConfig):
         return success
 
     def replace_q_with_ik_result(self, q: torch.Tensor, ik_q: torch.Tensor):
-        ik_replace_ind = self.ik_solver.kinematics.kinematics_config.get_replace_index(self.kinematics.kinematics_config)
+        ik_replace_ind = self.ik_solver.kinematics.kinematics_config.get_replace_index(
+            self.kinematics.kinematics_config
+        )
         new_q = q + 0
         new_q[..., ik_replace_ind] = ik_q
         return new_q
-    
+
     @profiler.record_function("grasp/generate_seed")
     def generate_seed(
         self,
@@ -740,7 +790,9 @@ class GraspSolver(GraspSolverConfig):
         coord_position_seed = torch.cat(seed_list, dim=1)
         return coord_position_seed
 
-    def update_world(self, world_lst: List[WorldConfig], gravity_center = None, obb_length = None, contact_obj_names: List[str] = None):
+    def update_world(
+        self, world_lst: List[WorldConfig], gravity_center=None, obb_length=None, contact_obj_names: List[str] = None
+    ):
         """Update the world representation for collision checking.
 
         This allows for updating the world representation as long as the new world representation
@@ -760,7 +812,7 @@ class GraspSolver(GraspSolverConfig):
             self.rollout_fn.grasp_convergence.reset(gravity_center, obb_length)
         if contact_obj_names is not None:
             self.reset_seed(contact_obj_names)
-        
+
     def reset_seed(self, contact_obj_names) -> None:
         self.q_sample_gen.reset(contact_obj_names)
 
@@ -773,8 +825,8 @@ class GraspSolver(GraspSolverConfig):
         generate fake samples
         """
         samples = self.tensor_args.to_device(torch.zeros((n, self.dof)))
-        samples[:, 3] = 1   # quaternion
-        return samples 
+        samples[:, 3] = 1  # quaternion
+        return samples
 
     @property
     def kinematics(self) -> CudaRobotModel:
@@ -787,9 +839,7 @@ class GraspSolver(GraspSolverConfig):
 
     def get_all_kinematics_instances(self) -> List[CudaRobotModel]:
         if self._kin_list is None:
-            self._kin_list = [
-                i.dynamics_model.robot_model for i in self.get_all_rollout_instances()
-            ]
+            self._kin_list = [i.dynamics_model.robot_model for i in self.get_all_rollout_instances()]
         return self._kin_list
 
     @torch.no_grad()
@@ -807,9 +857,7 @@ class GraspSolver(GraspSolverConfig):
         link_name: str = "attached_object",
     ) -> None:
         for k in self.get_all_kinematics_instances():
-            k.attach_object(
-                sphere_radius=sphere_radius, sphere_tensor=sphere_tensor, link_name=link_name
-            )
+            k.attach_object(sphere_radius=sphere_radius, sphere_tensor=sphere_tensor, link_name=link_name)
 
     def detach_object_from_robot(self, link_name: str = "attached_object") -> None:
         for k in self.get_all_kinematics_instances():
@@ -822,6 +870,7 @@ class GraspSolver(GraspSolverConfig):
     def joint_names(self) -> List[str]:
         """Get ordered names of all joints used in optimization with IKSolver."""
         return self.rollout_fn.kinematics.joint_names
+
 
 @torch.jit.script
 def get_success(
@@ -866,5 +915,5 @@ def get_result(
     contact_point = contact_point[idx].view((batch_size, return_seeds) + contact_point.shape[1:])
     contact_frame = contact_frame[idx].view((batch_size, return_seeds) + contact_frame.shape[1:])
     contact_force = contact_force[idx].view((batch_size, return_seeds) + contact_force.shape[1:])
-    
+
     return q_sol, success, grasp_error, dist_error, contact_point, contact_frame, contact_force

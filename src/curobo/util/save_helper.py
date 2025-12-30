@@ -39,6 +39,12 @@ def dict_select(d: Dict, keys: List, cpu_numpy: bool = True):
             new_d[k] = d[k]
             if cpu_numpy and isinstance(new_d[k], torch.Tensor):
                 new_d[k] = new_d[k].cpu().numpy()
+            # process sub-dictionary
+            if k in ["debug_info"] and isinstance(d[k], Dict):
+                for sub_k in d[k].keys():
+                    new_d[k][sub_k] = d[k][sub_k]
+                    if cpu_numpy and isinstance(new_d[k][sub_k], torch.Tensor):
+                        new_d[k][sub_k] = new_d[k][sub_k].cpu().numpy()
         # else:
         #     new_d[k] = None
     return new_d
@@ -79,6 +85,7 @@ class SaveHelper:
                 "grasp_error",
                 "dist_error",
                 "pene_error",
+                "debug_info",
             ]
         if self.usd_save_key is None:
             self.usd_save_key = ["world_model", "robot_pose", "debug_info"]
@@ -132,9 +139,7 @@ class SaveHelper:
             None,
             save_dict["world_model"],
             None,
-            JointState.from_position(
-                save_dict["robot_pose"].reshape(-1, save_dict["robot_pose"].shape[-1])
-            ),
+            JointState.from_position(save_dict["robot_pose"].reshape(-1, save_dict["robot_pose"].shape[-1])),
             save_path=save_path,
             kin_model=self.kin_model,
             robot_color=self.robot_color,

@@ -31,6 +31,7 @@ from curobo.util.tensor_util import normalize_vector
 from curobo.util.torch_utils import get_torch_jit_decorator
 from curobo.util.logger import log_error, log_warn
 
+
 class LineSearchType(Enum):
     GREEDY = "greedy"
     ARMIJO = "armijo"
@@ -54,8 +55,8 @@ class NewtonOptConfig(OptimizerConfig):
     last_best: float = 0
     use_temporal_smooth: bool = False
     cost_relative_threshold: float = 0.999
-    base_scale: List[int] = None 
-    momentum: bool = False 
+    base_scale: Optional[Union[List[int], List[List[int]]]] = None
+    momentum: bool = False
     normalize_grad: bool = False
     retain_best: bool = True
     lr_decay_rate: float = 1.0
@@ -81,11 +82,18 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         if config is not None:
             NewtonOptConfig.__init__(self, **vars(config))
         self.d_opt = self.action_horizon * self.d_action
-        self.line_scale = self._create_box_line_search(self.line_search_scale, self.base_scale)
+
+        if self.base_scale is not None and isinstance(self.base_scale[0], list):
+            assert len(self.base_scale) == len(self.rollout_fn.grasp_cost.contact_strategy["opt_progress"])
+            self.line_scale = self._create_box_line_search(self.line_search_scale, self.base_scale[0])
+        else:
+            self.line_scale = self._create_box_line_search(self.line_search_scale, self.base_scale)
+
         self.num_particles = self.line_scale.shape[1]
-        
+
         Optimizer.__init__(self)
         self.outer_iters = math.ceil(self.n_iters / self.inner_iters)
+        self.lr_decay_step = 0
 
         # create line search
         self.update_nproblems(self.n_problems)
@@ -117,13 +125,19 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
                 self.action_horizon, device=self.tensor_args.device, dtype=self.tensor_args.dtype
             ).unsqueeze(0)
             self._temporal_mat += eye_mat
+
+        # save every step
+        self.debug_info["contact_stage"] = []
+
+        # save evergy step if store_debug is true
         if self.store_debug:
-            self.debug_info['grad'] = []
-            self.debug_info['op'] = []
-            self.debug_info['hp'] = []
-            self.debug_info['debug_posi'] = []
-            self.debug_info['debug_normal'] = []
-        
+            self.debug_info["grad"] = []
+            self.debug_info["op"] = []
+            self.debug_info["hp"] = []
+            self.debug_info["debug_posi"] = []
+            self.debug_info["debug_normal"] = []
+            # add user-defined debug info
+
         self.rollout_fn.sum_horizon = True
 
     def reset_cuda_graph(self):
@@ -142,13 +156,13 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         if self.normalize_grad:
             group = torch.split(gq, self.grad_groups, -1)
             gq = torch.cat([normalize_vector(g) for g in group], -1)
-        
-        if self.momentum:    
-            self.best_grad_q[:, 0, :] = (self.best_grad_q[:, 0, :] * 0.9 + gq) / 2 
+
+        if self.momentum:
+            self.best_grad_q[:, 0, :] = (self.best_grad_q[:, 0, :] * 0.9 + gq) / 2
             return self.best_grad_q[:, 0, :]
         else:
             return gq
-        
+
     def _shift(self, shift_steps=1):
         # TODO: shift best q?:
         self.best_cost[:] = 5000000.0
@@ -208,8 +222,10 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
             cost_n, q, grad_q = self._opt_step(q.detach(), grad_q.detach())
 
             if self.store_debug:
-                self.debug_info['steps'].append(self.best_q.detach().view(-1, self.action_horizon, self.d_action).clone())
-                self.debug_info['cost'].append(self.best_cost.detach().view(-1, 1).clone())
+                self.debug_info["steps"].append(
+                    self.best_q.detach().view(-1, self.action_horizon, self.d_action).clone()
+                )
+                self.debug_info["cost"].append(self.best_cost.detach().view(-1, 1).clone())
 
         return self.best_q.detach(), self.best_cost.detach(), q.detach(), grad_q.detach()
 
@@ -244,7 +260,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
     def project_bounds(self, x):
         # Find maximum value along all joint angles:
         max_tensor = torch.maximum((self.action_lows - x), (x - self.action_highs)) / (
-            (self.action_highs - self.action_lows)
+            self.action_highs - self.action_lows
         )
 
         # all values greater than 0 are out of bounds:
@@ -263,18 +279,26 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
 
     def _compute_cost_gradient(self, x):
         x_n = x.detach().requires_grad_(True)
-        x_in = x_n.view(
-            self.n_problems * self.num_particles, self.action_horizon, self.rollout_fn.d_action
-        )
+        x_in = x_n.view(self.n_problems * self.num_particles, self.action_horizon, self.rollout_fn.d_action)
 
-        trajectories, debug = self.rollout_fn(x_in, opt_progress=self.current_iteration / self.n_iters, debug_flag=self.store_debug)  # x_n = (batch*line_search_scale) x horizon x d_action        
-        if debug is not None and 'save_qpos_flag' in debug and debug['save_qpos_flag']:
-            self.debug_info['mid_result'].append(x.detach().clone())
-            self.debug_info['dist_error'].append(debug['dist_error'].detach().clone())
-            # NOTE: To calculate pregrasp, reduce the learning rate of root pose
-            # if self.use_root_pose:
-            #     self.alpha_list[..., :7] *= 0.
-            
+        trajectories, debug = self.rollout_fn(
+            x_in, opt_progress=self.current_iteration / self.n_iters, debug_flag=self.store_debug
+        )  # x_n = (batch*line_search_scale) x horizon x d_action
+
+        # if debug is not None and "save_qpos_flag" in debug and debug["save_qpos_flag"]:
+        #     self.debug_info["mid_result"].append(x.detach().clone())
+        #     self.debug_info["dist_error"].append(debug["dist_error"].detach().clone())
+        # NOTE: To calculate pregrasp, reduce the learning rate of root pose (BODex authors)
+        # if self.use_root_pose:
+        #     self.alpha_list[..., :7] *= 0.
+
+        if debug is not None and "save_qpos_flag" in debug:  # save mid grasp qpos every iteration
+            self.debug_info["mid_result"].append(x.detach().clone())
+            self.debug_info["dist_error"].append(debug["dist_error"].detach().clone())
+            self.debug_info["contact_stage"].append(debug["contact_stage"].detach().clone())
+            # print(f"opt_progress={self.current_iteration / self.n_iters}, current_iteration: {self.current_iteration}")
+            # print(f"len(self.debug_info['mid_result']): {len(self.debug_info['mid_result'])}")
+
         if len(trajectories.costs.shape) == 2:
             cost = torch.sum(
                 trajectories.costs.view(self.n_problems, self.num_particles, self.horizon),
@@ -287,11 +311,18 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         g_x = cost.backward(gradient=self.l_vec, retain_graph=False)
         g_x = x_n.grad.detach()
 
-        return (
-            cost,
-            g_x,
-            debug
-        )  # cost: [n_envs, n_particles, 1], g_x: [n_envs, n_particles, horizon*d_action]
+        # Reset learning rate accoridng to the current contact stage, starting from the next iteration
+        if (
+            self.base_scale is not None
+            and isinstance(self.base_scale[0], list)
+            and self.rollout_fn.grasp_cost.switch_stage_flag  # switch stage at next iteration
+        ):
+            base_scale = self.base_scale[self.rollout_fn.grasp_cost.new_contact_stage]  # base scale of next stage
+            self.line_scale = self._create_box_line_search(self.line_search_scale, base_scale)
+            self.alpha_list[:] = self.line_scale
+            self.zero_alpha_list = self.alpha_list[:, :, 0:1].contiguous()
+
+        return (cost, g_x, debug)  # cost: [n_envs, n_particles, 1], g_x: [n_envs, n_particles, horizon*d_action]
 
     def _wolfe_line_search(self, x, step_direction):
         # x_set = get_x_set_jit(step_direction, x, self.alpha_list, self.action_lows, self.action_highs)
@@ -359,8 +390,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
             else:
                 if (
                     self._out_best_x is None
-                    or self._out_best_x.shape[0] * self._out_best_x.shape[1]
-                    != x_set.shape[0] * x_set.shape[2]
+                    or self._out_best_x.shape[0] * self._out_best_x.shape[1] != x_set.shape[0] * x_set.shape[2]
                 ):
                     self._out_best_x = torch.zeros(
                         (x_set.shape[0], x_set.shape[2]),
@@ -369,8 +399,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
                     )
                 if (
                     self._out_best_c is None
-                    or self._out_best_c.shape[0] * self._out_best_c.shape[1]
-                    != c.shape[0] * c.shape[2]
+                    or self._out_best_c.shape[0] * self._out_best_c.shape[1] != c.shape[0] * c.shape[2]
                 ):
                     self._out_best_c = torch.zeros(
                         (c.shape[0], c.shape[2]),
@@ -379,8 +408,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
                     )
                 if (
                     self._out_best_grad is None
-                    or self._out_best_grad.shape[0] * self._out_best_grad.shape[1]
-                    != g_x.shape[0] * g_x.shape[2]
+                    or self._out_best_grad.shape[0] * self._out_best_grad.shape[1] != g_x.shape[0] * g_x.shape[2]
                 ):
                     self._out_best_grad = torch.zeros(
                         (g_x.shape[0], g_x.shape[2]),
@@ -410,7 +438,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
 
     def _greedy_line_search(self, x, step_direction):
         step_direction = step_direction.detach()
-        
+
         x_set = x.unsqueeze(-2) + self.alpha_list * step_direction.unsqueeze(-2)
         x_set = self.clip_bounds(x_set)
         x_set = x_set.detach()
@@ -429,12 +457,14 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         best_grad = g_x[m].view(b, 1, self.d_opt)
 
         if self.store_debug:
-            self.debug_info['grad'].append(debug['input'].grad[..., :3].view(b*h, -1, 3)[m])
-            self.debug_info['op'].append(debug['op'].view(b*h, -1, 3)[m].detach())
-            self.debug_info['debug_posi'].append(debug['debug_posi'].view(b*h, -1, 3)[m].detach())
-            self.debug_info['debug_normal'].append(debug['debug_normal'].view(b*h, -1, 3)[m].detach())
-            self.debug_info['hp'].append(debug['input'][..., :3].view(b*h, -1, 3)[m].detach())
-        
+            self.debug_info["grad"].append(debug["input"].grad[..., :3].view(b * h, -1, 3)[m])
+            self.debug_info["op"].append(debug["op"].view(b * h, -1, 3)[m].detach())
+            self.debug_info["debug_posi"].append(debug["debug_posi"].view(b * h, -1, 3)[m].detach())
+            self.debug_info["debug_normal"].append(debug["debug_normal"].view(b * h, -1, 3)[m].detach())
+            self.debug_info["hp"].append(debug["input"][..., :3].view(b * h, -1, 3)[m].detach())
+            # add user-defined debug info:
+            # self.debug_info["contact_stage"].append(debug["contact_stage"].detach())
+
         return best_x, best_c, best_grad
 
     def _armijo_line_search(self, x, step_direction):
@@ -533,10 +563,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
             dtype=self.tensor_args.dtype,
         )
         self.best_cost = (
-            torch.ones(
-                (n_problems, 1), device=self.tensor_args.device, dtype=self.tensor_args.dtype
-            )
-            * 5000000.0
+            torch.ones((n_problems, 1), device=self.tensor_args.device, dtype=self.tensor_args.dtype) * 5000000.0
         )
         self.best_q = torch.zeros(
             (n_problems, self.d_opt), device=self.tensor_args.device, dtype=self.tensor_args.dtype
@@ -551,21 +578,20 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         self.alpha_list = self.line_scale.repeat(n_problems, 1, 1)
         self.zero_alpha_list = self.alpha_list[:, :, 0:1].contiguous()
         h = self.alpha_list.shape[1]
-        self.c_idx = torch.arange(
-            0, n_problems * h, step=(h), device=self.tensor_args.device, dtype=torch.long
-        )
-        self.best_iteration = torch.zeros(
-            (n_problems), device=self.tensor_args.device, dtype=torch.int16
-        )
+        self.c_idx = torch.arange(0, n_problems * h, step=(h), device=self.tensor_args.device, dtype=torch.long)
+        self.best_iteration = torch.zeros((n_problems), device=self.tensor_args.device, dtype=torch.int16)
         self.current_iteration = torch.zeros((1), device=self.tensor_args.device, dtype=torch.int16)
         self.cu_opt_init = False
         super().update_nproblems(n_problems)
 
     def _lr_decay(self, decay_coef):
+        self.lr_decay_step += 1
         self.alpha_list *= decay_coef
+        # self.alpha_list[:] = self.line_scale * (decay_coef**self.lr_decay_step)
         self.zero_alpha_list = self.alpha_list[:, :, 0:1].contiguous()
-        return 
-    
+        # print(f"LR Decay step {self.lr_decay_step}")
+        return
+
     def _initialize_opt_iters_graph(self, q, grad_q, shift_steps):
         if self.use_cuda_graph:
             self._create_opt_iters_graph(q, grad_q, shift_steps)
@@ -580,7 +606,7 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
         d = []
         if self.use_root_pose:
             if base_scale is None or self.horizon != 1:
-                raise NotImplementedError 
+                raise NotImplementedError
             dof_vec = self.tensor_args.to_device(
                 [base_scale[0]] * 3 + [base_scale[1]] * 4 + [base_scale[2]] * (self.d_opt - 7)
             )
@@ -593,12 +619,22 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
                         d.append(dof_new)
         else:
             if base_scale is not None:
-                raise NotImplementedError
-            dof_vec = torch.zeros(
-                (self.d_opt), device=self.tensor_args.device, dtype=self.tensor_args.dtype
-            )
-            for i in line_search_scale:
-                d.append(dof_vec + i)
+                # TODO: make it general. Current version only supports dual_dummy_arm_hand.
+                n_hand_dof = int(self.d_opt / 2 - 6)
+                dof_vec = self.tensor_args.to_device(
+                    [base_scale[0]] * 3
+                    + [base_scale[1]] * 3
+                    + [base_scale[2]] * n_hand_dof
+                    + [base_scale[0]] * 3
+                    + [base_scale[1]] * 3
+                    + [base_scale[2]] * n_hand_dof
+                )
+                for i in line_search_scale:
+                    d.append(dof_vec * i)
+            else:
+                dof_vec = torch.zeros((self.d_opt), device=self.tensor_args.device, dtype=self.tensor_args.dtype)
+                for i in line_search_scale:
+                    d.append(dof_vec + i)
         d = torch.stack(d, dim=0).unsqueeze(0)
         return d
 
@@ -700,7 +736,6 @@ def scale_action_old(dx, action_step_max):
 
 @get_torch_jit_decorator()
 def scale_action(dx, action_step_max):
-
     # get largest dx scaled by bounds across optimization variables
     scale_value = torch.max(torch.abs(dx) / action_step_max, dim=-1, keepdim=True)[0]
 
@@ -716,9 +751,7 @@ def scale_action(dx, action_step_max):
 
 
 @get_torch_jit_decorator()
-def check_convergence(
-    best_iteration: torch.Tensor, current_iteration: torch.Tensor, last_best: int
-) -> bool:
+def check_convergence(best_iteration: torch.Tensor, current_iteration: torch.Tensor, last_best: int) -> bool:
     success = False
     if torch.max(best_iteration).item() <= (-1.0 * (last_best)):
         success = True

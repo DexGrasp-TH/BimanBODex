@@ -1,0 +1,17 @@
+name: "debug_3"
+seed: 1
+device: "cuda:0"
+n_worker: 8
+
+defaults:
+  - _self_
+  - task: 
+
+task_name: ${hydra:runtime.choices.task}
+
+manip_cfg_file: sim_dual_dummy_arm_shadow/fc.yml
+
+output_path: src/curobo/content/assets/output
+
+
+

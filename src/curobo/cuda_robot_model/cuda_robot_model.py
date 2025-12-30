@@ -86,7 +86,7 @@ class CudaRobotModelConfig:
     #: function does use Jacobian during backward pass. What's not supported is
     compute_jacobian: bool = False
 
-    hand_pose_transfer: Dict = None 
+    hand_pose_transfer: Dict = None
 
     #: Store transformation matrix of every link during forward kinematics call in global memory.
     #: This helps speed up backward pass as we don't need to recompute the transformation matrices.
@@ -108,15 +108,15 @@ class CudaRobotModelConfig:
     @property
     def use_root_pose(self):
         return self.kinematics_config.use_root_pose
-    
+
     @property
     def grad_groups(self):
         return self.kinematics_config.grad_groups
-    
+
     @property
     def tendon_joints(self):
         return self.kinematics_config.tendon_joints
-    
+
     @staticmethod
     def from_basic_urdf(
         urdf_path: str,
@@ -192,9 +192,7 @@ class CudaRobotModelConfig:
         if ee_link is not None:
             config_file["ee_link"] = ee_link
 
-        return CudaRobotModelConfig.from_config(
-            CudaRobotGeneratorConfig(**config_file, tensor_args=tensor_args)
-        )
+        return CudaRobotModelConfig.from_config(CudaRobotGeneratorConfig(**config_file, tensor_args=tensor_args))
 
     @staticmethod
     def from_robot_yaml_file(
@@ -244,9 +242,7 @@ class CudaRobotModelConfig:
             data_dict = data_dict["robot_cfg"]
         if "kinematics" in data_dict:
             data_dict = data_dict["kinematics"]
-        return CudaRobotModelConfig.from_config(
-            CudaRobotGeneratorConfig(**data_dict, tensor_args=tensor_args)
-        )
+        return CudaRobotModelConfig.from_config(CudaRobotGeneratorConfig(**data_dict, tensor_args=tensor_args))
 
     @staticmethod
     def from_config(config: CudaRobotGeneratorConfig) -> CudaRobotModelConfig:
@@ -281,11 +277,11 @@ class CudaRobotModelConfig:
     def dof(self) -> int:
         """Get the number of actuated joints (degrees of freedom) of the robot"""
         return self.kinematics_config.n_dof
-    
-    def get_sphere_idx_from_namelst(self, name_lst: List[str], all_points_in_link: bool=False) -> torch.Tensor:
+
+    def get_sphere_idx_from_namelst(self, name_lst: List[str], all_points_in_link: bool = False) -> torch.Tensor:
         idx_lst = []
         for name in name_lst:
-            link_name, idx_in_link = name.rsplit('/', 1)
+            link_name, idx_in_link = name.rsplit("/", 1)
             link_idx_lst = self.kinematics_config.get_sphere_index_from_link_name(link_name)
             if all_points_in_link:
                 idx_lst.extend(link_idx_lst)
@@ -293,7 +289,7 @@ class CudaRobotModelConfig:
                 idx_lst.append(link_idx_lst[int(idx_in_link)])
         idx_lst = torch.stack(idx_lst)
         return idx_lst
-    
+
 
 @dataclass
 class CudaRobotModelState:
@@ -376,9 +372,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         self._batch_size = 0
         self.update_batch_size(1, reset_buffers=True)
 
-    def update_batch_size(
-        self, batch_size: int, force_update: bool = False, reset_buffers: bool = False
-    ):
+    def update_batch_size(self, batch_size: int, force_update: bool = False, reset_buffers: bool = False):
         """Update batch size of the robot model.
 
         Args:
@@ -465,10 +459,12 @@ class CudaRobotModel(CudaRobotModelConfig):
         batch_size = q.shape[0]
         self.update_batch_size(batch_size, force_update=q.requires_grad)
 
-        # average under-actuated joints 
+        # average under-actuated joints
         self._in_q.copy_(q)
         if self.tendon_joints is not None:
-            self._in_q[..., self.tendon_joints[0]] = self._in_q[..., self.tendon_joints[1]] = (q[..., self.tendon_joints[0]] + q[..., self.tendon_joints[1]]) / 2 
+            self._in_q[..., self.tendon_joints[0]] = self._in_q[..., self.tendon_joints[1]] = (
+                q[..., self.tendon_joints[0]] + q[..., self.tendon_joints[1]]
+            ) / 2
 
         # do fused forward:
         link_pos_seq, link_quat_seq, link_spheres_tensor = self._cuda_forward(self._in_q)
@@ -532,7 +528,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         idx_list = [self.link_names.index(l) for l in self.kinematics_config.contact_mesh_names]
         assert len(idx_list) == len(m_list)
         return m_list, idx_list
-    
+
     def compute_kinematics(
         self, js: JointState, link_name: Optional[str] = None, calculate_jacobian: bool = False
     ) -> CudaRobotModelState:
@@ -622,9 +618,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         m_list = self.get_robot_link_meshes()
         pose = self.get_link_poses(q, self.kinematics_config.mesh_link_names)
         for li, l in enumerate(self.kinematics_config.mesh_link_names):
-            m_list[li].pose = (
-                pose.get_index(0, li).multiply(Pose.from_list(m_list[li].pose)).tolist()
-            )
+            m_list[li].pose = pose.get_index(0, li).multiply(Pose.from_list(m_list[li].pose)).tolist()
 
         return m_list
 
@@ -753,9 +747,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         Returns:
             Pose: Pose of the link.
         """
-        mat = self.kinematics_config.fixed_transforms[
-            self.kinematics_config.link_name_to_idx_map[link_name]
-        ]
+        mat = self.kinematics_config.fixed_transforms[self.kinematics_config.link_name_to_idx_map[link_name]]
         pose = Pose(position=mat[:3, 3], rotation=mat[:3, :3])
         return pose
 
@@ -829,9 +821,7 @@ class CudaRobotModel(CudaRobotModelConfig):
             active_q = js.position[..., js.joint_names.index(j)]
             for k in self.kinematics_config.mimic_joints[j]:
                 extra_joints["joint_names"].append(k["joint_name"])
-                extra_joints["position"].append(
-                    k["joint_offset"][0] * active_q + k["joint_offset"][1]
-                )
+                extra_joints["position"].append(k["joint_offset"][0] * active_q + k["joint_offset"][1])
         extra_js = JointState.from_position(
             position=torch.stack(extra_joints["position"]), joint_names=extra_joints["joint_names"]
         )
@@ -844,20 +834,33 @@ class CudaRobotModel(CudaRobotModelConfig):
         transfer_rot = []
         transfer_trans = []
         for link in link_names:
-            transfer_rot.append(self.hand_pose_transfer['r'][link])
-            transfer_trans.append(self.hand_pose_transfer['t'][link])
+            transfer_rot.append(self.hand_pose_transfer["r"][link])
+            transfer_trans.append(self.hand_pose_transfer["t"][link])
         transfer_rot = torch.stack(transfer_rot, dim=1)
         transfer_trans = torch.stack(transfer_trans, dim=1)
-        
+
+        # link_num = len(link_names)
+        # new_r = (r.view(-1, link_num, 3, 3) @ transfer_rot).view(r.shape)
+        # new_t = (t.view(-1, link_num, 3, 1) + (r.view(-1, link_num, 3, 3) @ transfer_trans)).view(t.shape)
+
+        # transfer_trans is defined as (palm frame in hand base frame)
+        # palm frame is the sampled frame from object surface (in BODex, it is defined as x towards object, y towards right thumb)
+        # hand base frame is defined by the hand URDF
+        # The following code computes base_rt (new_rt) based on the palm_rt (r,t) and the defined palm in hand base (transfer_trans)
         link_num = len(link_names)
-        new_r = (r.view(-1, link_num, 3, 3) @ transfer_rot).view(r.shape)
-        new_t = (t.view(-1, link_num, 3, 1) + (r.view(-1, link_num, 3, 3) @ transfer_trans)).view(t.shape)
+        new_r = (r.view(-1, link_num, 3, 3) @ transfer_rot.transpose(-2, -1)).view(r.shape)
+        new_t = (t.view(-1, link_num, 3, 1) - (new_r.view(-1, link_num, 3, 3) @ transfer_trans)).view(t.shape)
+
+        # TODO: test
+
         return new_t, new_r
-    
+
     @property
-    def transfered_link_name(self, ):
-        return list(self.hand_pose_transfer['r'].keys())
-    
+    def transfered_link_name(
+        self,
+    ):
+        return list(self.hand_pose_transfer["r"].keys())
+
     def update_kinematics_config(self, new_kin_config: KinematicsTensorConfig):
         """Update kinematics representation of the robot.
 
@@ -923,12 +926,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         sphere_tensor[:, 3] = -10.0
         sph_list = []
         if n_spheres == 0:
-            log_warn(
-                "No spheres found, max_spheres: "
-                + str(max_spheres)
-                + " n_objects: "
-                + str(len(object_names))
-            )
+            log_warn("No spheres found, max_spheres: " + str(max_spheres) + " n_objects: " + str(len(object_names)))
             return False
         for i, x in enumerate(object_names):
             obs = external_objects[i]

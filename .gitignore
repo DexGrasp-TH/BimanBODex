@@ -1,4 +1,4 @@
-.vscode*
+# .vscode*
 *.hdf5
 *data/
 *.bat
@@ -212,3 +212,4 @@ docs/*
 
 src/curobo/content/assets/object
 src/curobo/content/assets/output
+outputs/

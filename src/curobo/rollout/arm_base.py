@@ -95,29 +95,32 @@ class ArmCostConfig:
             if k in data_dict:
                 data[k] = cost_key_list[k](**data_dict[k], tensor_args=tensor_args)
         if "grasp_cfg" in data_dict and world_coll_checker is not None:
-            data_dict["grasp_cfg"]['contact_strategy'] = data_dict['contact_strategy']
-            data_dict["grasp_cfg"]['contact_points_idx']= robot_config.kinematics.get_sphere_idx_from_namelst(data_dict["contact_strategy"]['contact_points_name'])
-            data['grasp_cfg'] = GraspCostConfig(
-                **data_dict["grasp_cfg"],
-                world_coll_checker=world_coll_checker,
-                tensor_args=tensor_args
+            data_dict["grasp_cfg"]["contact_strategy"] = data_dict["contact_strategy"]
+            data_dict["grasp_cfg"]["contact_points_idx"] = robot_config.kinematics.get_sphere_idx_from_namelst(
+                data_dict["contact_strategy"]["contact_points_name"]
+            )
+            # TODO: add contact normals here?
+            data["grasp_cfg"] = GraspCostConfig(
+                **data_dict["grasp_cfg"], world_coll_checker=world_coll_checker, tensor_args=tensor_args
             )
         if "primitive_collision_cfg" in data_dict and world_coll_checker is not None:
             if "contact_strategy" in data_dict:
-                strategy = data_dict['contact_strategy']
-                contact_points_idx = robot_config.kinematics.get_sphere_idx_from_namelst(strategy['contact_points_name'],all_points_in_link=True)
+                strategy = data_dict["contact_strategy"]
+                contact_points_idx = robot_config.kinematics.get_sphere_idx_from_namelst(
+                    strategy["contact_points_name"], all_points_in_link=True
+                )
             else:
                 strategy = None
                 contact_points_idx = None
             data["primitive_collision_cfg"] = PrimitiveCollisionCostConfig(
                 **data_dict["primitive_collision_cfg"],
-                contact_strategy = strategy,
-                contact_points_idx = contact_points_idx,
-                total_spheres = robot_config.kinematics.kinematics_config.total_spheres,
+                contact_strategy=strategy,
+                contact_points_idx=contact_points_idx,
+                total_spheres=robot_config.kinematics.kinematics_config.total_spheres,
                 world_coll_checker=world_coll_checker,
-                tensor_args=tensor_args
+                tensor_args=tensor_args,
             )
-        
+
         return data
 
 
@@ -159,14 +162,8 @@ class ArmBaseConfig(RolloutConfig):
         tensor_args: TensorDeviceType = TensorDeviceType(),
     ):
         # TODO: Check which type of collision checker and load that.
-        if (
-            world_coll_checker is None
-            and world_model_dict is not None
-            and world_coll_checker_dict is not None
-        ):
-            world_coll_cfg = WorldCollisionConfig.load_from_dict(
-                world_coll_checker_dict, world_model_dict, tensor_args
-            )
+        if world_coll_checker is None and world_model_dict is not None and world_coll_checker_dict is not None:
+            world_coll_cfg = WorldCollisionConfig.load_from_dict(world_coll_checker_dict, world_model_dict, tensor_args)
 
             world_coll_checker = create_collision_checker(world_coll_cfg)
         else:
@@ -262,47 +259,41 @@ class ArmBase(RolloutBase, ArmBaseConfig):
 
         self.n_dofs = self.dynamics_model.n_dofs
         self.traj_dt = self.dynamics_model.traj_dt
-        
+
         if self.cost_cfg.grasp_cfg is not None:
-            contact_meshes, self.cost_cfg.grasp_cfg.contact_mesh_idx = self.dynamics_model.robot_model.get_contact_link_meshes()
+            contact_meshes, self.cost_cfg.grasp_cfg.contact_mesh_idx = (
+                self.dynamics_model.robot_model.get_contact_link_meshes()
+            )
             self.convergence_cfg.grasp_cfg.contact_mesh_idx = self.cost_cfg.grasp_cfg.contact_mesh_idx
             if contact_meshes is not None:
                 self.world_coll_checker.load_contact_robot(contact_meshes)
                 self.world_coll_checker.load_contact_robot_pc(contact_meshes)
-        
+
         if self.cost_cfg.bound_cfg is not None:
             self.cost_cfg.bound_cfg.set_bounds(
                 self.dynamics_model.get_state_bounds(),
                 teleport_mode=self.dynamics_model.teleport_mode,
             )
-            self.cost_cfg.bound_cfg.cspace_distance_weight = (
-                self.dynamics_model.cspace_distance_weight
-            )
-            self.cost_cfg.bound_cfg.state_finite_difference_mode = (
-                self.dynamics_model.state_finite_difference_mode
-            )
+            self.cost_cfg.bound_cfg.cspace_distance_weight = self.dynamics_model.cspace_distance_weight
+            self.cost_cfg.bound_cfg.state_finite_difference_mode = self.dynamics_model.state_finite_difference_mode
             self.cost_cfg.bound_cfg.update_vec_weight(self.dynamics_model.null_space_weight)
 
             if self.cost_cfg.null_space_cfg is not None:
                 self.cost_cfg.bound_cfg.null_space_weight = self.cost_cfg.null_space_cfg.weight
-                log_warn(
-                    "null space cost is deprecated, use null_space_weight in bound cost instead"
-                )
+                log_warn("null space cost is deprecated, use null_space_weight in bound cost instead")
             self.cost_cfg.bound_cfg.dof = self.n_dofs
             self.bound_cost = BoundCost(self.cost_cfg.bound_cfg)
 
         if self.cost_cfg.manipulability_cfg is not None:
             self.manipulability_cost = ManipulabilityCost(self.cost_cfg.manipulability_cfg)
-        
+
         if self.cost_cfg.stop_cfg is not None:
             self.cost_cfg.stop_cfg.horizon = self.dynamics_model.horizon
             self.cost_cfg.stop_cfg.dt_traj_params = self.dynamics_model.dt_traj_params
             self.stop_cost = StopCost(self.cost_cfg.stop_cfg)
         self._goal_buffer.retract_state = self.retract_state
         if self.cost_cfg.primitive_collision_cfg is not None:
-            self.primitive_collision_cost = PrimitiveCollisionCost(
-                self.cost_cfg.primitive_collision_cfg
-            )
+            self.primitive_collision_cost = PrimitiveCollisionCost(self.cost_cfg.primitive_collision_cfg)
             if self.dynamics_model.robot_model.total_spheres == 0:
                 self.primitive_collision_cost.disable_cost()
 
@@ -316,9 +307,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
 
         # setup constraint terms:
         if self.constraint_cfg.primitive_collision_cfg is not None:
-            self.primitive_collision_constraint = PrimitiveCollisionCost(
-                self.constraint_cfg.primitive_collision_cfg
-            )
+            self.primitive_collision_constraint = PrimitiveCollisionCost(self.constraint_cfg.primitive_collision_cfg)
             if self.dynamics_model.robot_model.total_spheres == 0:
                 self.primitive_collision_constraint.disable_cost()
 
@@ -326,9 +315,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
             self.constraint_cfg.self_collision_cfg.self_collision_kin_config = (
                 self.dynamics_model.robot_model.get_self_collision_config()
             )
-            self.robot_self_collision_constraint = SelfCollisionCost(
-                self.constraint_cfg.self_collision_cfg
-            )
+            self.robot_self_collision_constraint = SelfCollisionCost(self.constraint_cfg.self_collision_cfg)
 
             if self.dynamics_model.robot_model.total_spheres == 0:
                 self.robot_self_collision_constraint.disable_cost()
@@ -336,12 +323,8 @@ class ArmBase(RolloutBase, ArmBaseConfig):
         self.constraint_cfg.bound_cfg.set_bounds(
             self.dynamics_model.get_state_bounds(), teleport_mode=self.dynamics_model.teleport_mode
         )
-        self.constraint_cfg.bound_cfg.cspace_distance_weight = (
-            self.dynamics_model.cspace_distance_weight
-        )
-        self.cost_cfg.bound_cfg.state_finite_difference_mode = (
-            self.dynamics_model.state_finite_difference_mode
-        )
+        self.constraint_cfg.bound_cfg.cspace_distance_weight = self.dynamics_model.cspace_distance_weight
+        self.cost_cfg.bound_cfg.state_finite_difference_mode = self.dynamics_model.state_finite_difference_mode
         self.cost_cfg.bound_cfg.dof = self.n_dofs
         self.constraint_cfg.bound_cfg.dof = self.n_dofs
         self.bound_constraint = BoundCost(self.constraint_cfg.bound_cfg)
@@ -351,9 +334,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
             self.null_convergence = DistCost(self.convergence_cfg.null_space_cfg)
 
         # set start state:
-        start_state = torch.randn(
-            (1, self.dynamics_model.d_state), **(self.tensor_args.as_torch_dict())
-        )
+        start_state = torch.randn((1, self.dynamics_model.d_state), **(self.tensor_args.as_torch_dict()))
         self._start_state = JointState(
             position=start_state[:, : self.dynamics_model.d_dof],
             velocity=start_state[:, : self.dynamics_model.d_dof],
@@ -364,7 +345,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
 
     def cost_fn(self, state: KinematicModelState, action_batch=None, opt_progress=1.0, return_list=False):
         # ee_pos_batch, ee_rot_batch = state_dict["ee_pos_seq"], state_dict["ee_rot_seq"]
-        
+
         state_batch = state.state_seq
         cost_list = []
 
@@ -387,10 +368,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
                 coll_cost = self.robot_self_collision_cost.forward(state.robot_spheres)
                 # cost += coll_cost
                 cost_list.append(coll_cost)
-        if (
-            self.cost_cfg.primitive_collision_cfg is not None
-            and self.primitive_collision_cost.enabled
-        ):
+        if self.cost_cfg.primitive_collision_cfg is not None and self.primitive_collision_cost.enabled:
             with profiler.record_function("cost/collision"):
                 coll_cost = self.primitive_collision_cost.forward(
                     state.robot_spheres,
@@ -416,27 +394,18 @@ class ArmBase(RolloutBase, ArmBaseConfig):
         constraint = self.bound_constraint.forward(state.state_seq)
 
         constraint_list = [constraint]
-        if (
-            self.constraint_cfg.primitive_collision_cfg is not None
-            and self.primitive_collision_constraint.enabled
-        ):
+        if self.constraint_cfg.primitive_collision_cfg is not None and self.primitive_collision_constraint.enabled:
             if use_batch_env and self._goal_buffer.batch_world_idx is not None:
                 coll_constraint = self.primitive_collision_constraint.forward(
-                    state.robot_spheres,
-                    env_query_idx=self._goal_buffer.batch_world_idx,
-                    opt_progress=1.0
+                    state.robot_spheres, env_query_idx=self._goal_buffer.batch_world_idx, opt_progress=1.0
                 )
             else:
                 coll_constraint = self.primitive_collision_constraint.forward(
-                    state.robot_spheres, env_query_idx=None,
-                    opt_progress=1.0
+                    state.robot_spheres, env_query_idx=None, opt_progress=1.0
                 )
 
             constraint_list.append(coll_constraint)
-        if (
-            self.constraint_cfg.self_collision_cfg is not None
-            and self.robot_self_collision_constraint.enabled
-        ):
+        if self.constraint_cfg.self_collision_cfg is not None and self.robot_self_collision_constraint.enabled:
             self_constraint = self.robot_self_collision_constraint.forward(state.robot_spheres)
             constraint_list.append(self_constraint)
         constraint = cat_sum(constraint_list)
@@ -505,10 +474,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
         return out_metrics.clone()
 
     @abstractmethod
-    def convergence_fn(
-        self, state: KinematicModelState, out_metrics: Optional[RolloutMetrics] = None
-    ):
-        
+    def convergence_fn(self, state: KinematicModelState, out_metrics: Optional[RolloutMetrics] = None):
         if out_metrics is None:
             out_metrics = RolloutMetrics()
         return out_metrics
@@ -574,9 +540,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
         )
         return state
 
-    def rollout_constraint(
-        self, act_seq: torch.Tensor, use_batch_env: bool = True
-    ) -> RolloutMetrics:
+    def rollout_constraint(self, act_seq: torch.Tensor, use_batch_env: bool = True) -> RolloutMetrics:
         if self.cuda_graph_instance:
             log_error("Cuda graph is using this instance, please break the graph before using this")
         state = self.dynamics_model.forward(self.start_state, act_seq)
@@ -593,16 +557,12 @@ class ArmBase(RolloutBase, ArmBaseConfig):
             with torch.cuda.stream(s):
                 for _ in range(3):
                     state = self.dynamics_model.forward(self.start_state, act_seq)
-                    self._cu_rollout_constraint_out_metrics = self.constraint_fn(
-                        state, use_batch_env=use_batch_env
-                    )
+                    self._cu_rollout_constraint_out_metrics = self.constraint_fn(state, use_batch_env=use_batch_env)
             torch.cuda.current_stream(device=self.tensor_args.device).wait_stream(s)
             self.cu_rollout_constraint_graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self.cu_rollout_constraint_graph, stream=s):
                 state = self.dynamics_model.forward(self.start_state, act_seq)
-                self._cu_rollout_constraint_out_metrics = self.constraint_fn(
-                    state, use_batch_env=use_batch_env
-                )
+                self._cu_rollout_constraint_out_metrics = self.constraint_fn(state, use_batch_env=use_batch_env)
             self._rollout_constraint_cuda_graph_init = True
             self._cuda_graph_valid = True
         if not self.cuda_graph_instance:
@@ -624,9 +584,7 @@ class ArmBase(RolloutBase, ArmBaseConfig):
         if self.start_state is None:
             raise ValueError("start_state is not set in rollout")
         with profiler.record_function("robot_model/rollout"):
-            state = self.dynamics_model.forward(
-                self.start_state, act_seq, self._goal_buffer.batch_current_state_idx
-            )
+            state = self.dynamics_model.forward(self.start_state, act_seq, self._goal_buffer.batch_current_state_idx)
 
         with profiler.record_function("cost/all"):
             cost_seq, debug = self.cost_fn(state, act_seq, opt_progress=opt_progress, debug_flag=debug_flag)
@@ -702,15 +660,15 @@ class ArmBase(RolloutBase, ArmBaseConfig):
     @property
     def use_root_pose(self):
         return self.dynamics_model.use_root_pose
-    
+
     @property
     def tendon_joints(self):
         return self.dynamics_model.tendon_joints
-    
+
     @property
     def grad_groups(self):
         return self.dynamics_model.grad_groups
-    
+
     @property
     def action_bound_lows(self):
         return self.dynamics_model.action_bound_lows
@@ -812,4 +770,3 @@ class ArmBase(RolloutBase, ArmBaseConfig):
             self.primitive_collision_cost.update_contact_distance(contact_distance)
         if self.constraint_cfg.primitive_collision_cfg is not None:
             self.primitive_collision_constraint.update_contact_distance(contact_distance)
-        

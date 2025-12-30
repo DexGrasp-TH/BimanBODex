@@ -52,9 +52,7 @@ class WrapResult:
     raw_action: Optional[torch.Tensor] = None
 
     def clone(self):
-        return WrapResult(
-            self.action.clone(), self.solve_time, self.metrics.clone(), debug=self.debug
-        )
+        return WrapResult(self.action.clone(), self.solve_time, self.metrics.clone(), debug=self.debug)
 
 
 class WrapBase(WrapConfig):
@@ -80,9 +78,9 @@ class WrapBase(WrapConfig):
     def get_debug_data(self):
         debug_dict = {}
         for opt in self.optimizers:
-            for k, v in opt.debug_info.items(): 
+            for k, v in opt.debug_info.items():
                 if k not in debug_dict:
-                    debug_dict[k] = [v] 
+                    debug_dict[k] = [v]
                 else:
                     debug_dict[k].append(v)
         return debug_dict
@@ -155,15 +153,11 @@ class WrapBase(WrapConfig):
         act_seq = self.optimize(seed, shift_steps=0)
         self.opt_dt = time.time() - start_time
 
-        act = self.safety_rollout.get_robot_command(
-            filtered_state, act_seq, state_idx=goal.batch_current_state_idx
-        )
+        act = self.safety_rollout.get_robot_command(filtered_state, act_seq, state_idx=goal.batch_current_state_idx)
 
         if self.compute_metrics:
             with profiler.record_function("wrap_base/compute_metrics"):
-                metrics = self.get_metrics(
-                    act, self.use_cuda_graph_metrics
-                )  # TODO: use cuda graph for metrics
+                metrics = self.get_metrics(act, self.use_cuda_graph_metrics)  # TODO: use cuda graph for metrics
 
         debug_info = self.get_debug_data()
 
@@ -197,7 +191,5 @@ class WrapBase(WrapConfig):
 
     def get_all_rollout_instances(self) -> List[RolloutBase]:
         if self._rollout_list is None:
-            self._rollout_list = [
-                self.safety_rollout
-            ] + self._get_rollout_instances_from_optimizers()
+            self._rollout_list = [self.safety_rollout] + self._get_rollout_instances_from_optimizers()
         return self._rollout_list

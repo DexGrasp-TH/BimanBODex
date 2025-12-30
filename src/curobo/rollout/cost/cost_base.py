@@ -21,7 +21,7 @@ from curobo.types.base import TensorDeviceType
 
 @dataclass
 class CostConfig:
-    weight: Union[torch.Tensor, float, List[float]]
+    weight: Union[torch.Tensor, float, List[float], List[List[float]]]
     tensor_args: TensorDeviceType = None
     distance_threshold: float = 0.0
     classify: bool = False
@@ -38,9 +38,7 @@ class CostConfig:
     def __post_init__(self):
         self.weight = self.tensor_args.to_device(self.weight)
         if len(self.weight.shape) == 0:
-            self.weight = torch.tensor(
-                [self.weight], device=self.tensor_args.device, dtype=self.tensor_args.dtype
-            )
+            self.weight = torch.tensor([self.weight], device=self.tensor_args.device, dtype=self.tensor_args.dtype)
         if self.vec_weight is not None:
             self.vec_weight = self.tensor_args.to_device(self.vec_weight)
         if self.max_value is not None:

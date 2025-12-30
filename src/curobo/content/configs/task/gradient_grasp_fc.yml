@@ -27,7 +27,7 @@ model:
 
 cost:
   grasp_cfg:
-    weight: [100, 1000, 10] # grasp loss, dist loss, regu loss
+    weight: [20, 1000, 10, 1] # grasp loss, dist loss, regu loss, normal loss
     perturb_strength_bound: [0.01, 0.02]
   cspace_cfg:
     weight: 0.0
@@ -47,13 +47,13 @@ cost:
 
 
 lbfgs:
-  n_iters: 500      # iterations in optimization
+  n_iters: 500 # 500      # iterations in optimization
   inner_iters: 50
   lr_decay_rate: 0.95
   cold_start_n_iters: null
   min_iters: 20
   line_search_scale:  [0.1] # search step for each base_scale. If use [0.01, 0.1], the optimization will be easily stucked in the local minima!
-  base_scale: [0.01, 0.1, 0.1]  # learning rate for translation, rotation, and qpose
+  base_scale:  [0.01, 0.1, 0.1]  # learning rate for translation, rotation, and qpose
   retain_best: False
   momentum: True
   normalize_grad: True

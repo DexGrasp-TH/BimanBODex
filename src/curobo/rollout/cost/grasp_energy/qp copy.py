@@ -23,9 +23,6 @@ class QPEnergy(GraspEnergyBase):
         tensor_args,
         enable_density,
         solve_interval,
-        groups,
-        weights,
-        multi_ge_type,
         **args,
     ):
         super().__init__(miu_coef, obj_gravity_center, obj_obb_length, tensor_args, enable_density)
@@ -41,9 +38,6 @@ class QPEnergy(GraspEnergyBase):
         self.count = 0
         self.solve_interval = solve_interval
         self.qp_size = None
-        self.groups = groups
-        self.weights = weights
-        self.multi_ge_type = multi_ge_type
         return
 
     def _init_LCQP_u(self, batch, num_points):
@@ -257,65 +251,13 @@ class QPEnergy(GraspEnergyBase):
         Q_matrix[:, press_ind, press_ind] += 0.01
         return Q_matrix, Q_matrix2, grasp_matrix_with_target
 
-    def construct_Q_matrix_multi_group(self, grasp_matrix, target_wrenches):
-        batch_num, point_num = grasp_matrix.shape[:2]
-
-        grasp_matrix_lst = []
-        for i in range(len(self.groups)):
-            grasp_mat_group = torch.zeros_like(grasp_matrix)
-            grasp_mat_group[:, self.groups[i], ...] = grasp_matrix[:, self.groups[i], ...]  # zero for out-group fingers
-            grasp_mat_group = grasp_mat_group.transpose(-3, -2).reshape(
-                batch_num, 6, -1
-            )  # [b, n, 6, 4] -> [b, 6, n, 4] -> [b, 6, 4n]
-            grasp_matrix_lst.append(grasp_mat_group)
-
-        if self.multi_ge_type == "concate":
-            grasp_matrix = torch.cat(grasp_matrix_lst, dim=1)  # [b, 6g, 4n]
-            grasp_matrix = grasp_matrix.repeat_interleave(
-                target_wrenches.shape[0], dim=0
-            )  # [b, 6g, 4n] -> [bm, 6g, 4n]
-            repeated_target_wrench = target_wrenches.repeat(batch_num, len(self.groups), 1)  # [m, 6, 1] -> [bm, 6g, 1]
-            grasp_matrix_with_target = torch.cat([grasp_matrix, -repeated_target_wrench], dim=-1)  # [bm, 6g, 4n+1]
-            for i in range(len(self.groups)):
-                grasp_matrix_with_target[:, 6 * i : 6 * i + 6, :] *= self.weights[i]  # weighted the finger groups
-            Q_matrix = grasp_matrix_with_target.transpose(-2, -1) @ grasp_matrix_with_target  # [bm, 4n+1, 4n+1]
-            Q_matrix2 = Q_matrix.clone()
-            semi_Q_matrix = grasp_matrix_with_target
-        else:
-            raise NotImplementedError
-        # elif self.multi_ge_type == "sum":
-        #     Q_matrix_lst = []
-        #     for i in range(len(self.groups)):
-        #         grasp_mat_group = grasp_matrix_lst[i]
-        #         grasp_mat_group = grasp_mat_group.repeat_interleave(
-        #             target_wrenches.shape[0], dim=0
-        #         )  # [b, 6, 4n] -> [bm, 6, 4n]
-        #         repeated_target_wrench = target_wrenches.repeat(batch_num, 1, 1)  # [m, 6, 1] -> [bm, 6, 1]
-        #         grasp_mat_group_with_target = torch.cat(
-        #             [grasp_mat_group, -repeated_target_wrench], dim=-1
-        #         )  # [bm, 6, 4n+1]
-        #         Q_mat_group = grasp_mat_group_with_target.transpose(-2, -1) @ grasp_mat_group_with_target
-        #         Q_matrix_lst.append(Q_mat_group)
-        #     Q_matrix = torch.sum(torch.stack(Q_matrix_lst, dim=0), dim=0)
-        #     Q_matrix2 = Q_matrix.clone()
-
-        # penalize large pressure to encourage more fingers to apply force
-        if self.miu_coef[1] > 0:
-            press_ind = range(0, point_num * 4, 4)
-        else:
-            press_ind = range(0, point_num * 3, 3)
-        Q_matrix[:, press_ind, press_ind] += 0.01
-        return Q_matrix, Q_matrix2, semi_Q_matrix
-
     def forward(self, pos, normal, target_wrenches):
         batch, n_points = pos.shape[:-1]
 
         # start = time.time()
         self.init_LCQP(batch, n_points, target_wrenches.shape[0])
         grasp_matrix, contact_frame, _ = self.construct_grasp_matrix(pos, normal)
-        # Q_matrix, Q_matrix2, semi_Q_matrix = self.construct_Q_matrix(grasp_matrix, target_wrenches)
-        Q_matrix, Q_matrix2, semi_Q_matrix = self.construct_Q_matrix_multi_group(grasp_matrix, target_wrenches)
-
+        Q_matrix, Q_matrix2, semi_Q_matrix = self.construct_Q_matrix(grasp_matrix, target_wrenches)
         if self.count % self.solve_interval == 0:
             self.solution = self.qpsolver.solve(Q_matrix, semi_Q_matrix)
         # print(f'Solving {solution.shape[0]} QPs in {time.time() - start} seconds')

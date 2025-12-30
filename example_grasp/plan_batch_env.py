@@ -26,7 +26,6 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-import numpy as np
 import random
 
 seed = 123
@@ -35,7 +34,7 @@ torch.manual_seed(seed)
 random.seed(seed)
 
 
-def process_grasp_result(result, save_debug, save_data, save_id):
+def process_grasp_result(result, save_debug, save_data, save_id, manip_config_data):
     traj = result.debug_info["solver"]["steps"][0]
     all_traj = torch.cat(traj, dim=1)  # [b*n, h, q]
     batch, horizon = all_traj.shape[:2]
@@ -50,6 +49,13 @@ def process_grasp_result(result, save_debug, save_data, save_id):
         select_horizon_lst = [0]
     elif save_data == "final" or save_data == "final_and_mid":
         select_horizon_lst = [-1]
+    elif save_data == "pregrasp_and_grasp":
+        contact_stages = torch.stack(result.debug_info["solver"]["contact_stage"][0], dim=-1)[0]
+        pregrasp_stage = manip_config_data["grasp_contact_strategy"]["pregrasp_stage"]
+        grasp_stage = manip_config_data["grasp_contact_strategy"]["grasp_stage"]
+        pregrasp_step = torch.where(contact_stages == pregrasp_stage)[0][-1]
+        grasp_step = torch.where(contact_stages == grasp_stage)[0][-1]
+        select_horizon_lst = torch.stack([pregrasp_step, grasp_step], dim=0)
     else:
         raise NotImplementedError
 
@@ -69,19 +75,16 @@ def process_grasp_result(result, save_debug, save_data, save_id):
         hp_traj = torch.stack(result.debug_info["solver"]["hp"][0], dim=1).view(-1, n_num, 3)
         grad_traj = torch.stack(result.debug_info["solver"]["grad"][0], dim=1).view(-1, n_num, 3)
         op_traj = torch.stack(result.debug_info["solver"]["op"][0], dim=1).view(-1, o_num, 3)
-        posi_traj = torch.stack(result.debug_info["solver"]["debug_posi"][0], dim=1).view(
-            -1, o_num, 3
-        )
-        normal_traj = torch.stack(result.debug_info["solver"]["debug_normal"][0], dim=1).view(
-            -1, o_num, 3
-        )
-
+        posi_traj = torch.stack(result.debug_info["solver"]["debug_posi"][0], dim=1).view(-1, o_num, 3)
+        normal_traj = torch.stack(result.debug_info["solver"]["debug_normal"][0], dim=1).view(-1, o_num, 3)
+        contact_stage_traj = torch.stack(result.debug_info["solver"]["contact_stage"][0], dim=-1).view(-1)
         debug_info = {
             "hp": hp_traj,
             "grad": grad_traj * 100,
             "op": op_traj,
             "debug_posi": posi_traj,
             "debug_normal": normal_traj,
+            "contact_stage": contact_stage_traj,
         }
 
         for k, v in debug_info.items():
@@ -129,7 +132,7 @@ if __name__ == "__main__":
         "-d",
         "--save_data",
         # choices=['all', 'final', 'final_and_mid', 'init', 'select_{$INT}'],
-        default="final_and_mid",
+        default="all",
         help="Which results to save",
     )
 
@@ -164,19 +167,28 @@ if __name__ == "__main__":
         help="If True, skip existing files. (default: True)",
     )
 
+    parser.add_argument(
+        "-p",
+        "--exp_name",
+        type=str,
+        default=None,
+        help="If None, use exp_name in manip_cfg_file.",
+    )
+
     setup_logger("warn")
 
     args = parser.parse_args()
     manip_config_data = load_yaml(join_path(get_manip_configs_path(), args.manip_cfg_file))
+
+    if args.exp_name is not None:
+        manip_config_data["exp_name"] = args.exp_name
 
     world_generator = get_world_config_dataloader(manip_config_data["world"], args.parallel_world)
 
     if args.save_folder is not None:
         save_folder = os.path.join(args.save_folder, "graspdata")
     elif manip_config_data["exp_name"] is not None:
-        save_folder = os.path.join(
-            args.manip_cfg_file[:-4], manip_config_data["exp_name"], "graspdata"
-        )
+        save_folder = os.path.join(args.manip_cfg_file[:-4], manip_config_data["exp_name"], "graspdata")
     else:
         save_folder = os.path.join(
             args.manip_cfg_file[:-4],
@@ -207,6 +219,8 @@ if __name__ == "__main__":
                 obj_obb_length=world_info_dict["obj_obb_length"],
                 use_cuda_graph=False,
                 store_debug=args.save_debug,
+                pregrasp_stage=manip_config_data["grasp_contact_strategy"]["pregrasp_stage"],
+                grasp_stage=manip_config_data["grasp_contact_strategy"]["grasp_stage"],
             )
             grasp_solver = GraspSolver(grasp_config)
             world_info_dict["world_model"] = grasp_solver.world_coll_checker.world_model
@@ -225,30 +239,33 @@ if __name__ == "__main__":
 
         if args.save_debug:
             robot_pose, debug_info = process_grasp_result(
-                result, args.save_debug, args.save_data, args.save_id
+                result, args.save_debug, args.save_data, args.save_id, manip_config_data
             )
             world_info_dict["debug_info"] = debug_info
             world_info_dict["robot_pose"] = robot_pose.reshape(
                 (len(world_info_dict["world_model"]), -1) + robot_pose.shape[1:]
             )
         else:
-            squeeze_pose_qpos = torch.cat(
-                [
-                    result.solution[..., 1, :7],
-                    result.solution[..., 1, 7:] * 2 - result.solution[..., 0, 7:],
-                ],
-                dim=-1,
-            )
-            all_hand_pose_qpos = torch.cat(
-                [result.solution, squeeze_pose_qpos.unsqueeze(-2)], dim=-2
-            )
+            if grasp_solver.rollout_fn.kinematics.use_root_pose:
+                squeeze_pose_qpos = torch.cat(
+                    [
+                        result.solution[..., 1, :7],
+                        result.solution[..., 1, 7:] * 2 - result.solution[..., 0, 7:],
+                    ],
+                    dim=-1,
+                )
+            else:
+                squeeze_pose_qpos = result.solution[..., 1, :] * 2 - result.solution[..., 0, :]
+
+            all_hand_pose_qpos = torch.cat([result.solution, squeeze_pose_qpos.unsqueeze(-2)], dim=-2)
             world_info_dict["robot_pose"] = all_hand_pose_qpos
             world_info_dict["contact_point"] = result.contact_point
             world_info_dict["contact_frame"] = result.contact_frame
             world_info_dict["contact_force"] = result.contact_force
             world_info_dict["grasp_error"] = result.grasp_error
             world_info_dict["dist_error"] = result.dist_error
-        log_warn(f"Sinlge Time: {time.time()-sst}")
+
+        log_warn(f"Sinlge Time: {time.time() - sst}")
         save_helper.save_piece(world_info_dict)
 
-    log_warn(f"Total Time: {time.time()-tst}")
+    log_warn(f"Total Time: {time.time() - tst}")
