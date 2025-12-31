@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <robot name="right_shadow_hand">
-   <link name="rh_forearm">
+   <!-- <link name="rh_forearm">
       <visual name="forearm_0">
          <origin xyz="-0.0006274281916165553 2.5023159453650283e-05 0.006174842104832059" rpy="1.2117729232060683 -1.5707754380241972 1.9125508984262103"/>
          <geometry>
@@ -14,7 +14,7 @@
             <mesh filename="stl/forearm_1.stl"/>
          </geometry>
          <material name="white"/>
-      </visual>
+      </visual> -->
       <!-- <visual name="forearm_collision">
          <origin xyz="-2.3000312765045747e-08 -2.164897719253595e-08 0.0927456223223767" rpy="0.0 0.0 0.0"/>
          <geometry>
@@ -22,8 +22,8 @@
          </geometry>
          <material name="white"/>
       </visual> -->
-   </link>
-   <link name="rh_wrist">
+   <!-- </link> -->
+   <!-- <link name="rh_wrist">
       <visual name="wrist">
          <origin xyz="0.0026493678443454513 2.2619274745282502e-05 0.01606431384985827" rpy="1.5546762010448698 -0.0015692253144186097 1.5706727051126772"/>
          <geometry>
@@ -38,7 +38,7 @@
       <origin xyz="0.01 0.0 0.21301" rpy="0.0 0.0 1.5707963267948963"/>
       <axis xyz="0.0 1.0 0.0"/>
       <limit lower="-0.523599" upper="0.174533" effort="100" velocity="100"/>
-   </joint>
+   </joint> -->
    <link name="rh_palm">
       <visual name="palm">
          <origin xyz="0.005374445170477271 -0.0022442906559082794 0.03201294312033412" rpy="0.2100458392356129 0.08313278223257159 1.5503210950325148"/>
@@ -48,13 +48,13 @@
          <material name="white"/>
       </visual>
    </link>
-   <joint type="revolute" name="rh_WRJ1">
+   <!-- <joint type="revolute" name="rh_WRJ1">
       <parent link="rh_wrist"/>
       <child link="rh_palm"/>
       <origin xyz="0.0 0.0 0.034" rpy="0.0 0.0 0.0"/>
       <axis xyz="1.0 0.0 0.0"/>
       <limit lower="-0.698132" upper="0.488692" effort="100" velocity="100"/>
-   </joint>
+   </joint> -->
    <link name="rh_ffknuckle">
       <visual name="f_knuckle">
          <origin xyz="-8.015943942283821e-06 0.00028383334511582203 0.0003141144870240873" rpy="0.4761390295154802 0.007276744315003247 -0.01128884895567703"/>

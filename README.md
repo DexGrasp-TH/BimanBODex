@@ -73,11 +73,6 @@ Alternatively, new object assets can be pre-processed using [MeshProcess](https:
 # Single GPU version
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 40 
 
-# mingrui test
-python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
-
-python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
-
 # Debugging. The saved USD file has the whole optimization process, while the intermediate gradient on each contact point is denoted by the purple line.
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 1 -m usd -debug -d all -i 0 1
 
@@ -93,6 +88,16 @@ CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_mogen_batch.py -c sim_shadow/ta
 python example_grasp/multi_gpu.py -c sim_shadow/tabletop.yml -t grasp_and_mogen -g 0 1 2 3 
 ```
 On a single GPU, the grasp synthesis supports parallizing different objects, but the motion planning only supports parallizing different trajectories for the same object.
+
+
+Mingrui's:
+```
+python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
+
+python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
+
+python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
+```
 
 5. **(Optional) Visualize synthesized poses**:
 ```

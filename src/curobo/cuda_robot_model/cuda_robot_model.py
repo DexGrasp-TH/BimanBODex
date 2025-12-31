@@ -848,6 +848,7 @@ class CudaRobotModel(CudaRobotModelConfig):
         # new_r = (r.view(-1, link_num, 3, 3) @ transfer_rot).view(r.shape)
         # new_t = (t.view(-1, link_num, 3, 1) + (r.view(-1, link_num, 3, 3) @ transfer_trans)).view(t.shape)
 
+        # Mingrui:
         # transfer_trans is defined as (palm frame in hand base frame)
         # palm frame is the sampled frame from object surface (in BODex, it is defined as x towards object, y towards right thumb)
         # hand base frame is defined by the hand URDF
@@ -855,8 +856,6 @@ class CudaRobotModel(CudaRobotModelConfig):
         link_num = len(link_names)
         new_r = (r.view(-1, link_num, 3, 3) @ transfer_rot.transpose(-2, -1)).view(r.shape)
         new_t = (t.view(-1, link_num, 3, 1) - (new_r.view(-1, link_num, 3, 3) @ transfer_trans)).view(t.shape)
-
-        # TODO: test
 
         return new_t, new_r
 

@@ -16,12 +16,12 @@ from visualizer import Visualizer
 
 
 if __name__ == "__main__":
-    robot_urdf_path = "src/curobo/content/assets/robot/shadow_hand/dual_dummy_arm_shadow.urdf"
+    robot_urdf_path = "src/curobo/content/assets/robot/shadow_hand/right_sim.urdf"
     mesh_dir_path = os.path.dirname(robot_urdf_path)
     visualizer = Visualizer(robot_urdf_path=robot_urdf_path, mesh_dir_path=mesh_dir_path)
 
     # prefix = "src/curobo/content/assets/output/sim_dual_dummy_arm_shadow/fc/debug/graspdata/"
-    grasp_file_path = "src/curobo/content/assets/output/sim_dual_dummy_arm_shadow/fc/debug_98/graspdata/core_bowl_3f56833e91054d2518e800f0d88f9019/floating/scale016_grasp.npy"
+    grasp_file_path = "src/curobo/content/assets/output/sim_shadow/fc/debug_0/graspdata/core_bowl_3f56833e91054d2518e800f0d88f9019/floating/scale016_grasp.npy"
 
     grasp_data = np.load(os.path.join(grasp_file_path), allow_pickle=True).item()
     scene_path = str(grasp_data["scene_path"][0])
@@ -67,9 +67,8 @@ if __name__ == "__main__":
         n_step = grasp_data["robot_pose"].shape[-2]
         n_grasp = grasp_data["robot_pose"].shape[-3]
         grasp_qpos = grasp_data["robot_pose"][:, grasp_idx, :, :].reshape(n_step, n_dof)
-        robot_pose = torch.cat(
-            [torch.tensor([[0, 0, 0, 1, 0, 0, 0]]).repeat(n_step, 1), torch.tensor(grasp_qpos)], dim=-1
-        )
+        robot_pose = torch.tensor(grasp_qpos)
+
         visualizer.set_robot_parameters(robot_pose, joint_names=joint_names)
 
         geometry_lst = []
@@ -84,8 +83,9 @@ if __name__ == "__main__":
         opt_step_lst = [0] + change_indices.tolist() + [n_step - 1]
 
         # opt_step_lst = np.asarray(opt_step_lst)[[-1, -2]]
-        opt_step_lst = np.asarray(opt_step_lst)[:-1]
+        # opt_step_lst = np.asarray(opt_step_lst)[:-1]
         # opt_step_lst = np.asarray(opt_step_lst)[[-2, -1]]
+        opt_step_lst = np.asarray(opt_step_lst)
 
         for i_opt, opt_step in enumerate(opt_step_lst):
             alpha = 1.0 * (i_opt + 1) / len(opt_step_lst)

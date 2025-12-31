@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from typing import List
+import math
 
 from .base import GraspEnergyBase
 from curobo.opt.qp import init_QP_solver
@@ -277,7 +278,9 @@ class QPEnergy(GraspEnergyBase):
             repeated_target_wrench = target_wrenches.repeat(batch_num, len(self.groups), 1)  # [m, 6, 1] -> [bm, 6g, 1]
             grasp_matrix_with_target = torch.cat([grasp_matrix, -repeated_target_wrench], dim=-1)  # [bm, 6g, 4n+1]
             for i in range(len(self.groups)):
-                grasp_matrix_with_target[:, 6 * i : 6 * i + 6, :] *= self.weights[i]  # weighted the finger groups
+                grasp_matrix_with_target[:, 6 * i : 6 * i + 6, :] *= math.sqrt(
+                    self.weights[i]
+                )  # weighted the finger groups
             Q_matrix = grasp_matrix_with_target.transpose(-2, -1) @ grasp_matrix_with_target  # [bm, 4n+1, 4n+1]
             Q_matrix2 = Q_matrix.clone()
             semi_Q_matrix = grasp_matrix_with_target

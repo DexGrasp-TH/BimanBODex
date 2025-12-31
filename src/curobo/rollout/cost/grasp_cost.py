@@ -215,6 +215,7 @@ class GraspCost(CostBase, GraspCostConfig):
         grasp_energy, grasp_error, contact_frame, contact_force = self.GraspEnergy.forward(
             pos.squeeze(1), normal.squeeze(1), self.TWS["w"]
         )
+
         E_angle = self.weight[self.contact_stage][0] * grasp_energy.mean(dim=-1, keepdim=True)
 
         E_normal = -self.weight[self.contact_stage][3] * (-1.0 + (normal * norminal_normals).sum(dim=-1)).mean(dim=-1)
@@ -407,7 +408,9 @@ class GraspCost(CostBase, GraspCostConfig):
             f"E_angle: {E_angle.mean().item():.3f}, "
             f"E_normal: {E_normal.mean().item():.3f}, "
             f"E_dist: {E_dist.mean().item():.3f}, "
-            f"E_regu: {E_regu.mean().item():.3f}"
+            f"E_regu: {E_regu.mean().item():.3f}, "
+            f"grasp_error: {(grasp_error.mean().item() if grasp_error is not None else 0.0):.3f}"
+            "\n---------------------------------"
         )
         # print(f"raw_pos: {raw_pos[0]}")
         # print(f"raw_normal: {raw_normal[0]}")

@@ -37,6 +37,10 @@ class HeurGraspSeedGenerator:
                 full_robot_model.kinematics_config
             )
 
+        self.b_dummy_arm = (full_robot_model.dummy_trans_joints is not None) and (
+            full_robot_model.dummy_rot_joints is not None
+        )
+
         if use_root_pose:
             assert len(self.tr_link_names) == 1
             self.q_dof = all_dof - 7
@@ -45,7 +49,7 @@ class HeurGraspSeedGenerator:
                 self.ik_init = None
             else:
                 self.ik_init = tensor_args.to_device(seeder_cfg["ik_init_q"]).view(1, 1, -1)
-            if seeder_cfg["dual_dummy_arm"]:
+            if self.b_dummy_arm:
                 self.ik_retract_config = tensor_args.to_device(torch.zeros((6))).view(1, 1, -1)
             else:
                 self.ik_retract_config = None
@@ -56,10 +60,6 @@ class HeurGraspSeedGenerator:
             self.skip_transfer = seeder_cfg["skip_transfer"]
             self.jitter_rt_random_gen = self._set_jitter_tr(seeder_cfg["jitter_dist"], seeder_cfg["jitter_angle"])
 
-        if "dual_dummy_arm" in seeder_cfg:
-            self.b_dual_dummy_arm = seeder_cfg["dual_dummy_arm"]
-        else:
-            self.b_dual_dummy_arm = False
         self.seeder_cfg = seeder_cfg
         self.world_coll_checker = world_coll_checker
         self.reset(obj_lst)
@@ -95,8 +95,6 @@ class HeurGraspSeedGenerator:
                     low_bounds=extra_info.surface_sample_ind_lower,
                     seed=1312,
                 )
-                if not self.b_dual_dummy_arm:
-                    assert tr_num == 1, "TODO: implement auto initialization for multiple hands"
             else:
                 raise NotImplementedError
 
@@ -174,12 +172,32 @@ class HeurGraspSeedGenerator:
     def _sample_to_shape(self, batch, num_samples):
         tr_num = len(self.tr_link_names)
         if self.ind_random_gen is not None:
+            # sample base pose here
+            # sample_idx = (
+            #     self.ind_random_gen.get_samples(num_samples * tr_num, bounded=True)
+            #     .long()
+            #     .view(num_samples, tr_num, -1)
+            #     .permute(2, 0, 1)
+            # )
+
             sample_idx = (
                 self.ind_random_gen.get_samples(num_samples * tr_num, bounded=True)
                 .long()
                 .view(num_samples, tr_num, -1)
                 .permute(2, 0, 1)
             )
+            if tr_num == 2:
+                # TODO: currently assume symmetric hand
+                right_sample_idx = sample_idx[:, :, 0]
+                right_trans = self.base_t[right_sample_idx].squeeze(3)
+                left_trans = -right_trans  # assume symmetric hand,
+
+                # find nearest point to left_trans in self.base_t
+                base_t_flat = self.base_t.view(-1, 3)
+                dist = torch.cdist(left_trans, base_t_flat)
+                left_sample_idx = torch.argmin(dist, dim=-1)
+                sample_idx[:, :, [1]] = left_sample_idx
+
             base_rot = self.base_r[sample_idx].squeeze(3)
             base_trans = self.base_t[sample_idx].squeeze(3)
             base_q = self.base_q[sample_idx].squeeze(3)[:, :, 0, ...]
