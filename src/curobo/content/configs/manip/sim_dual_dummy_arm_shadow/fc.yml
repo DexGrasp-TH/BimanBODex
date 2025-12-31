@@ -97,7 +97,8 @@ grasp_cfg:
     solve_interval: 5
 
 
-gradient:
+# Replace the configurations in gradient_grasp_fc.yml
+gradient: 
   cost:
     grasp_cfg: 
       weight: [

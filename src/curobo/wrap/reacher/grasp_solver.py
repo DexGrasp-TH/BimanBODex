@@ -130,7 +130,6 @@ class GraspSolverConfig:
             contact_robot_links = [
                 i.split("/")[0] for i in manip_config_data["grasp_contact_strategy"]["contact_points_name"]
             ]
-            # TODO: add contact normals here?
             if calculate_penetration is None:
                 robot_config_data["kinematics"]["contact_mesh_names"] = contact_robot_links
             elif calculate_penetration == "all_links":

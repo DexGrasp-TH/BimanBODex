@@ -619,16 +619,37 @@ class NewtonOptBase(Optimizer, NewtonOptConfig):
                         d.append(dof_new)
         else:
             if base_scale is not None:
-                # TODO: make it general. Current version only supports dual_dummy_arm_hand.
-                n_hand_dof = int(self.d_opt / 2 - 6)
-                dof_vec = self.tensor_args.to_device(
-                    [base_scale[0]] * 3
-                    + [base_scale[1]] * 3
-                    + [base_scale[2]] * n_hand_dof
-                    + [base_scale[0]] * 3
-                    + [base_scale[1]] * 3
-                    + [base_scale[2]] * n_hand_dof
+                dof_vec = base_scale[2] * torch.ones(
+                    (self.d_opt), device=self.tensor_args.device, dtype=self.tensor_args.dtype
                 )
+
+                if (
+                    self.rollout_fn.kinematics.dummy_trans_joints is None
+                    or self.rollout_fn.kinematics.dummy_rot_joints is None
+                ):
+                    log_warn("Dummy joints not defined in kinematic model.")
+                else:
+                    trans_joint_indices = [
+                        self.rollout_fn.kinematics.joint_names.index(n)
+                        for n in self.rollout_fn.kinematics.dummy_trans_joints
+                    ]  # dummy trans joints
+                    rot_joint_indices = [
+                        self.rollout_fn.kinematics.joint_names.index(n)
+                        for n in self.rollout_fn.kinematics.dummy_rot_joints
+                    ]  # dummy rot joints
+                    dof_vec[trans_joint_indices] = base_scale[0]
+                    dof_vec[rot_joint_indices] = base_scale[1]
+
+                # n_hand_dof = int(self.d_opt / 2 - 6)
+                # dof_vec = self.tensor_args.to_device(
+                #     [base_scale[0]] * 3
+                #     + [base_scale[1]] * 3
+                #     + [base_scale[2]] * n_hand_dof
+                #     + [base_scale[0]] * 3
+                #     + [base_scale[1]] * 3
+                #     + [base_scale[2]] * n_hand_dof
+                # )
+
                 for i in line_search_scale:
                     d.append(dof_vec * i)
             else:

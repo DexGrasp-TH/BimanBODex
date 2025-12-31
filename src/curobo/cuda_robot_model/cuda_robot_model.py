@@ -88,6 +88,9 @@ class CudaRobotModelConfig:
 
     hand_pose_transfer: Dict = None
 
+    dummy_trans_joints: Optional[List[str]] = None
+    dummy_rot_joints: Optional[List[str]] = None
+
     #: Store transformation matrix of every link during forward kinematics call in global memory.
     #: This helps speed up backward pass as we don't need to recompute the transformation matrices.
     #: However, this increases memory usage and also slightly slows down forward kinematics.
@@ -265,6 +268,8 @@ class CudaRobotModelConfig:
             use_global_cumul=generator.use_global_cumul,
             compute_jacobian=generator.compute_jacobian,
             hand_pose_transfer=generator.hand_pose_transfer,
+            dummy_trans_joints=generator.dummy_trans_joints,
+            dummy_rot_joints=generator.dummy_rot_joints,
             generator_config=config,
         )
 

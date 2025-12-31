@@ -12,6 +12,8 @@
 robot_cfg:
   kinematics:
     use_root_pose: False
+    dummy_trans_joints: ['ra_TransXJ', 'ra_TransYJ', 'ra_TransZJ', 'la_TransXJ', 'la_TransYJ', 'la_TransZJ']
+    dummy_rot_joints: ['ra_RotXJ', 'ra_RotYJ', 'ra_RotZJ', 'la_RotXJ', 'la_RotYJ', 'la_RotZJ']
     hand_pose_transfer_path: "hand_pose_transfer/dual_dummy_arm_shadow.yml"
     grad_group_names: [
       ['ra_TransXJ', 'ra_TransYJ', 'ra_TransZJ', 'ra_RotXJ', 'ra_RotYJ', 'ra_RotZJ'],
