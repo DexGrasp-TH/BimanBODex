@@ -173,6 +173,7 @@ class HeurGraspSeedGenerator:
         tr_num = len(self.tr_link_names)
         if self.ind_random_gen is not None:
             # sample base pose here
+
             # sample_idx = (
             #     self.ind_random_gen.get_samples(num_samples * tr_num, bounded=True)
             #     .long()

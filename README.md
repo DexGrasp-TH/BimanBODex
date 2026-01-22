@@ -89,16 +89,6 @@ python example_grasp/multi_gpu.py -c sim_shadow/tabletop.yml -t grasp_and_mogen 
 ```
 On a single GPU, the grasp synthesis supports parallizing different objects, but the motion planning only supports parallizing different trajectories for the same object.
 
-
-Mingrui's:
-```
-python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
-
-python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
-
-python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
-```
-
 5. **(Optional) Visualize synthesized poses**:
 ```
 python example_grasp/visualize_npy.py -c sim_shadow/fc.yml -p debug -m grasp
@@ -106,6 +96,28 @@ python example_grasp/visualize_npy.py -c sim_shadow/fc.yml -p debug -m grasp
 
 6. **Evaluate grasp poses and filter out bad ones**: please see [DexGraspBench](https://github.com/JYChen18/DexGraspBench).
 
+## Mingrui Usage
+
+Synthesize grasps:
+```bash
+# debug
+python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
+
+# not debug
+python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k --exp_name xxx
+```
+
+Render images:
+```bash
+
+```
+
+
+```
+python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
+
+python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
+```
 
 ## License
 

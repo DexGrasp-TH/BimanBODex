@@ -410,7 +410,7 @@ class GraspCost(CostBase, GraspCostConfig):
             f"E_dist: {E_dist.mean().item():.3f}, "
             f"E_regu: {E_regu.mean().item():.3f}, "
             f"grasp_error: {(grasp_error.mean().item() if grasp_error is not None else 0.0):.3f}"
-            "\n---------------------------------"
+            # "\n---------------------------------"
         )
         # print(f"raw_pos: {raw_pos[0]}")
         # print(f"raw_normal: {raw_normal[0]}")
