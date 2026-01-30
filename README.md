@@ -1,4 +1,4 @@
-# BODex
+# BimanBODex
 
 A GPU-based efficient pipeline for dexterous grasp synthesis built on [cuRobo](https://github.com/NVlabs/curobo/tree/main), proposed in *[ICRA 2025] BODex: Scalable and Efficient Robotic Dexterous Grasp Synthesis Using Bilevel Optimization*.
 
@@ -25,18 +25,18 @@ Looking for more diverse and higher-quality dexterous grasps? Check out [Dexonom
 
 2. **Install the Python environment**:
 ```bash
-conda create -n bodex python=3.10
-conda activate bodex
+conda create -n bibodex python=3.10
+conda activate bibodex
 
-conda install pytorch==2.2.2 pytorch-cuda=12.1 -c pytorch -c nvidia 
+conda install pytorch==2.2.2 pytorch-cuda=12.1 -c pytorch -c nvidia -y
 
 pip install mkl==2024.0.0
 
 pip install -e . --no-build-isolation  
 
 pip install usd-core 
-conda install pytorch-scatter -c pyg
-conda install coal==3.0.1 -c conda-forge   # https://github.com/coal-library/coal
+conda install pytorch-scatter -c pyg -y
+conda install coal==3.0.1 -c conda-forge -y   # https://github.com/coal-library/coal
 
 pip uninstall numpy
 pip install numpy==1.26.4
