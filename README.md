@@ -98,7 +98,7 @@ python example_grasp/visualize_npy.py -c sim_shadow/fc.yml -p debug -m grasp
 
 ## Mingrui Usage
 
-Synthesize grasps:
+Synthesize bimanual grasps:
 ```bash
 # debug
 python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
@@ -109,14 +109,14 @@ python example_grasp/plan_batch_env.py -c sim_dual_dummy_arm_shadow/fc.yml -w 10
 
 Render images:
 ```bash
-
-```
-
-
-```
-python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
-
 python example_grasp/main.py task=render manip_cfg_file=sim_dual_dummy_arm_shadow/fc.yml task.debug=False name=debug_
+```
+
+Synthesize single-hand grasps:
+
+```bash
+# debug
+CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k -debug -d all --exp_name debug_
 ```
 
 ## License
