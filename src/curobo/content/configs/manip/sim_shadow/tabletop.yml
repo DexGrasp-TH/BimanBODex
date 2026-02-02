@@ -1,8 +1,8 @@
 world:
   type: scene_cfg
   template_path: object/DGN_2k/scene_cfg/**/tabletop_ur10e/*.npy
-  start: 
-  end: 
+  start: 0
+  end: 10
 
 robot_file: "right_shadow_hand_sim.yml"
 # robot_file_with_arm: "ur10e_shadow_sim.yml"
@@ -42,6 +42,8 @@ grasp_contact_strategy:
   distance: [0.01, 0.01, 0.0]
   contact_query_mode: [-1, 0, 0]
   save_qpos: [False, True]
+  pregrasp_stage: 1
+  grasp_stage: 2
   max_ge_stage: 0
 
 grasp_cfg:
@@ -55,6 +57,9 @@ grasp_cfg:
     miu_coef: [0.1, 0]
     solver_type: 'batch_reluqp'
     k_lower: 0.2
+    groups: [[0, 1, 2, 3, 4]]
+    weights: [1.0]
+    multi_ge_type: "concate"
     pressure_constraints:   # [contact_id_list, lower, upper]
       [[[0, 1, 2, 3, 4], 1.0, 5.0],
         [[0, 1, 2], 0.4, 3.0], 
