@@ -403,20 +403,21 @@ class GraspCost(CostBase, GraspCostConfig):
         }
 
         ################ DEBUG ################
-        print(
-            f"opt_progress: {(opt_progress.item() if torch.is_tensor(opt_progress) else opt_progress):.3f}, "
-            f"E_angle: {E_angle.mean().item():.3f}, "
-            f"E_normal: {E_normal.mean().item():.3f}, "
-            f"E_dist: {E_dist.mean().item():.3f}, "
-            f"E_regu: {E_regu.mean().item():.3f}, "
-            f"grasp_error: {(grasp_error.mean().item() if grasp_error is not None else 0.0):.3f}"
-            # "\n---------------------------------"
-        )
-        # print(f"raw_pos: {raw_pos[0]}")
-        # print(f"raw_normal: {raw_normal[0]}")
-        # if self.contact_stage == 2:
-        #     print(f"self.target_contact_position: {self.target_contact_position[0]}")
-        #     print(f"self.target_contact_normal: {self.target_contact_normal[0]}")
-        #     a = 1
+        if self.debug_mode:
+            print(
+                f"opt_progress: {(opt_progress.item() if torch.is_tensor(opt_progress) else opt_progress):.3f}, "
+                f"E_angle: {E_angle.mean().item():.3f}, "
+                f"E_normal: {E_normal.mean().item():.3f}, "
+                f"E_dist: {E_dist.mean().item():.3f}, "
+                f"E_regu: {E_regu.mean().item():.3f}, "
+                f"grasp_error: {(grasp_error.mean().item() if grasp_error is not None else 0.0):.3f}"
+                # "\n---------------------------------"
+            )
+            # print(f"raw_pos: {raw_pos[0]}")
+            # print(f"raw_normal: {raw_normal[0]}")
+            # if self.contact_stage == 2:
+            #     print(f"self.target_contact_position: {self.target_contact_position[0]}")
+            #     print(f"self.target_contact_normal: {self.target_contact_normal[0]}")
+            #     a = 1
 
         return E_angle, E_normal, E_dist, E_regu, debug
