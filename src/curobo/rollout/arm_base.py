@@ -99,6 +99,7 @@ class ArmCostConfig:
             data_dict["grasp_cfg"]["contact_points_idx"] = robot_config.kinematics.get_sphere_idx_from_namelst(
                 data_dict["contact_strategy"]["contact_points_name"]
             )
+            data_dict["grasp_cfg"]["debug"] = data_dict["debug"]
             data["grasp_cfg"] = GraspCostConfig(
                 **data_dict["grasp_cfg"], world_coll_checker=world_coll_checker, tensor_args=tensor_args
             )

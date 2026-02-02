@@ -34,6 +34,7 @@ class CostConfig:
     vec_convergence: Optional[List[float]] = None
     threshold_value: Optional[float] = None
     return_loss: bool = False
+    debug: bool = False
 
     def __post_init__(self):
         self.weight = self.tensor_args.to_device(self.weight)

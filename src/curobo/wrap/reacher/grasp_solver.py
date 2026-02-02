@@ -166,6 +166,10 @@ class GraspSolverConfig:
             )
             world_coll_checker = create_collision_checker(world_cfg)
 
+        # debug arguments
+        config_data["cost"]["debug"] = store_debug
+        grad_config_data["cost"]["debug"] = store_debug
+
         if collision_activation_distance is not None:
             config_data["cost"]["primitive_collision_cfg"]["activation_distance"] = collision_activation_distance
             grad_config_data["cost"]["primitive_collision_cfg"]["activation_distance"] = collision_activation_distance

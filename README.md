@@ -119,7 +119,9 @@ Synthesize single-hand grasps:
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/tabletop.yml -w 100 -k -debug -d all --exp_name debug_0
 
 # non-debug
-CUDA_VISIBLE_DEVICES=0 python example_grasp/plan_batch_env.py -c sim_shadow/tabletop.yml -w 100 -k --exp_name debug_0
+CUDA_VISIBLE_DEVICES=0 python example_grasp/plan_batch_env.py -c sim_shadow/fc.yml -w 100 -k --exp_name debug_0
+# multi-GPU
+python example_grasp/multi_gpu.py -c sim_shadow/fc.yml -w 100 -t grasp -g 0 1 2 3 
 ```
 
 ## License
