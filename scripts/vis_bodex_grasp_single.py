@@ -21,10 +21,11 @@ if __name__ == "__main__":
     visualizer = Visualizer(robot_urdf_path=robot_urdf_path, mesh_dir_path=mesh_dir_path)
 
     # prefix = "src/curobo/content/assets/output/sim_dual_dummy_arm_shadow/fc/debug/graspdata/"
-    grasp_file_path = "src/curobo/content/assets/output/sim_shadow/fc/debug_0/graspdata/core_bowl_3f56833e91054d2518e800f0d88f9019/floating/scale016_grasp.npy"
+    grasp_file_path = "src/curobo/content/assets/output/sim_shadow/tabletop/server_debug_0/graspdata/core_bottle_47ebee26ca51177ac3fdab075b98c5d8/tabletop_ur10e/scale012_pose002_0_grasp.npy"
 
     grasp_data = np.load(os.path.join(grasp_file_path), allow_pickle=True).item()
     scene_path = str(grasp_data["scene_path"][0])
+    scene_path = scene_path.split("BimanBODex/")[-1]
     scene_data = np.load(scene_path, allow_pickle=True).item()
 
     joint_names = grasp_data["joint_names"]
@@ -76,21 +77,33 @@ if __name__ == "__main__":
         geometry_lst.append(axis)
         geometry_lst.append(obj_mesh)
 
-        # Find the contact stage switching steps
-        contact_stage = grasp_data["debug_info"]["contact_stage"].reshape(n_grasp, n_step)[grasp_idx, :]
-        diff = np.diff(contact_stage)
-        change_indices = np.where(diff != 0)[0]
-        opt_step_lst = [0] + change_indices.tolist() + [n_step - 1]
+        if "debug_info" in grasp_data.keys():
+            print("Debug mode visualization.")
+            # Find the contact stage switching steps
+            contact_stage = grasp_data["debug_info"]["contact_stage"].reshape(n_grasp, n_step)[grasp_idx, :]
+            diff = np.diff(contact_stage)
+            change_indices = np.where(diff != 0)[0]
+            opt_step_lst = [0] + change_indices.tolist() + [n_step - 1]
 
-        # opt_step_lst = np.asarray(opt_step_lst)[[-1, -2]]
-        # opt_step_lst = np.asarray(opt_step_lst)[:-1]
-        # opt_step_lst = np.asarray(opt_step_lst)[[-2, -1]]
-        opt_step_lst = np.asarray(opt_step_lst)
+            # opt_step_lst = np.asarray(opt_step_lst)[[-1, -2]]
+            # opt_step_lst = np.asarray(opt_step_lst)[:-1]
+            # opt_step_lst = np.asarray(opt_step_lst)[[-2, -1]]
+            opt_step_lst = np.asarray(opt_step_lst)
 
-        for i_opt, opt_step in enumerate(opt_step_lst):
-            alpha = 1.0 * (i_opt + 1) / len(opt_step_lst)
-            robot_mesh = visualizer.get_robot_trimesh_data(i=opt_step, color=[0.941, 0.502, 0.502, alpha])
+            for i_opt, opt_step in enumerate(opt_step_lst):
+                alpha = 1.0 * (i_opt + 1) / len(opt_step_lst)
+                robot_mesh = visualizer.get_robot_trimesh_data(i=opt_step, color=[0.941, 0.502, 0.502, alpha])
+                geometry_lst.append(robot_mesh)
+
+        else:
+            print("Non-Debug mode visualization.")
+            type_idx = 1  # grasp pose
+            robot_mesh = visualizer.get_robot_trimesh_data(i=type_idx, color=[0.941, 0.502, 0.502, 1.0])
             geometry_lst.append(robot_mesh)
+            # for i_opt in range(robot_pose.shape[-2]):
+            #     alpha = 1.0 * (i_opt + 1) / robot_pose.shape[-2]
+            #     robot_mesh = visualizer.get_robot_trimesh_data(i=i_opt, color=[0.941, 0.502, 0.502, alpha])
+            #     geometry_lst.append(robot_mesh)
 
         scene = tm.Scene(geometry=geometry_lst)
         scene.show(smooth=False)
