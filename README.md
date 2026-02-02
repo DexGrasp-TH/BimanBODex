@@ -117,6 +117,9 @@ Synthesize single-hand grasps:
 ```bash
 # debug
 CUDA_VISIBLE_DEVICES=7 python example_grasp/plan_batch_env.py -c sim_shadow/tabletop.yml -w 100 -k -debug -d all --exp_name debug_0
+
+# non-debug
+CUDA_VISIBLE_DEVICES=0 python example_grasp/plan_batch_env.py -c sim_shadow/tabletop.yml -w 100 -k --exp_name debug_0
 ```
 
 ## License
