@@ -11,13 +11,13 @@ if __name__ == "__main__":
     """
 
     # ------------- create visualizer -------------
-    robot_urdf_path = "src/curobo/content/assets/robot/shadow_hand/dual_dummy_arm_shadow.urdf"
-    mesh_dir_path = "src/curobo/content/assets/robot/shadow_hand"
-    robot_config_path = "src/curobo/content/configs/robot/dual_dummy_arm_shadow.yml"
+    robot_urdf_path = "src/curobo/content/assets/robot/leap_hand/leap.urdf"
+    mesh_dir_path = "src/curobo/content/assets/robot/leap_hand"
+    robot_config_path = "src/curobo/content/configs/robot/leap_hand.yml"
+    hand_pose = torch.zeros((1, 3 + 4 + 16))
 
     visualize = Visualizer(robot_urdf_path=robot_urdf_path, mesh_dir_path=mesh_dir_path)
 
-    hand_pose = torch.zeros((1, 3 + 4 + 6 + 6 + 22 + 22))
     hand_pose[:, 3] = 1.0  # quat w
     # hand_pose[:, 7:] = torch.rand_like(hand_pose[:, 7:])
 
